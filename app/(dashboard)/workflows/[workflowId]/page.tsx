@@ -4,7 +4,6 @@ import { use, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation } from 'urql'
-import { TriggerWorkflowRunMutation } from '@/graphql/mutations/workflow-run'
 
 import { nodeTypeInfo } from '@/components/workflow/NodeTypeInfo'
 import { StepConfigUI } from '@/components/workflow/StepConfigUIs'
@@ -67,10 +66,11 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
   const [stepConfigStr, setStepConfigStr] = useState(getDefaultConfig('llm_call'))
   const [stepError, setStepError] = useState<string | null>(null)
   const [isStepSaving, setIsStepSaving] = useState(false)
-// Manual run state
-const [isLoading, setIsLoading] = useState(false)
-const [runId, setRunId] = useState<string | null>(null)
-const [status, setStatus] = useState<string | null>(null)
+
+  // Manual run state
+  const [isRunningWorkflow, setIsRunningWorkflow] = useState(false)
+  const [runId, setRunId] = useState<string | null>(null)
+  const [runStatus, setRunStatus] = useState<string | null>(null)
 
   // GraphQL query
   const [result, reexecute] = useQuery({
@@ -85,7 +85,6 @@ const [status, setStatus] = useState<string | null>(null)
   const [, updateWorkflowStep] = useMutation(UpdateWorkflowStepMutation)
   const [, deleteWorkflowStep] = useMutation(DeleteWorkflowStepMutation)
   const [, updateStepPosition] = useMutation(UpdateWorkflowStepPositionMutation)
-const [, triggerWorkflowRun] = useMutation(TriggerWorkflowRunMutation)
 
   const { data, fetching, error } = result
   const workflow = data?.workflows_by_pk
@@ -299,67 +298,39 @@ const [, triggerWorkflowRun] = useMutation(TriggerWorkflowRunMutation)
     }
   }
 
-const handleRunWorkflow = async () => {
-  if (!canEdit) return
+  const handleRunWorkflow = async () => {
+    if (!canEdit) return
 
-  setIsLoading(true)
-  setRunId(null)
-  setStatus(null)
+    setIsRunningWorkflow(true)
+    setRunId(null)
+    setRunStatus(null)
 
-  try {
-    const response = await triggerWorkflowRun({
-      workflow_id: workflowId,
-    })
+    try {
+      const response = await fetch('/api/trigger-workflow-run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ workflow_id: workflowId }),
+      })
 
-    if (response.error) {
-      throw new Error(response.error.message)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to trigger workflow')
+      }
+
+      setRunId(data.run_id)
+      setRunStatus(data.status)
+    } catch (error: any) {
+      console.error('Error triggering workflow:', error)
+      alert(`Failed to trigger workflow: ${error.message}`)
+    } finally {
+      setIsRunningWorkflow(false)
     }
-
-    const data = response.data
-
-    setRunId(data.triggerWorkflowRun.run_id)
-    setStatus(data.triggerWorkflowRun.status)
-  } catch (error) {
-    console.error('Error triggering workflow:', error)
-    alert(`Failed to trigger workflow: ${error.message}`)
-  } finally {
-    setIsLoading(false)
   }
-}
 
-
-const handleRunWorkflow = async () => {
-  if (!canEdit) return
-
-  setIsLoading(true)
-  setRunId(null)
-  setStatus(null)
-
-  try {
-    const response = await fetch('/api/trigger-workflow-run', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ workflow_id: workflowId }),
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to trigger workflow')
-    }
-
-    setRunId(data.run_id)
-    setStatus(data.status)
-  } catch (error) {
-    console.error('Error triggering workflow:', error)
-    // Optionally, show an error to the user
-    alert(`Failed to trigger workflow: ${error.message}`)
-  } finally {
-    setIsLoading(false)
-  }
-}\n\n  return (
+  return (
     <div className="space-y-6 max-w-5xl mx-auto animate-fade-in pb-16">
       {/* Navigation Breadcrumb */}
       <div className="flex items-center space-x-2 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
@@ -608,7 +579,6 @@ const handleRunWorkflow = async () => {
             
             {/* User Access Rights */}
             <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 space-y-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Access Control</h3>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-300 font-medium">Your Role:</span>
                 <span className="text-xs font-bold uppercase tracking-wider text-violet-400 bg-violet-500/10 border border-violet-500/20 px-3 py-1 rounded-full">
@@ -616,6 +586,42 @@ const handleRunWorkflow = async () => {
                 </span>
               </div>
             </div>
+
+            {/* Manual Run Card */}
+            {canEdit && (
+              <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 space-y-4">
+                <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                  <span>Manual Run</span>
+                </h3>
+                {isRunningWorkflow ? (
+                  <div className="flex items-center space-x-2 py-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-violet-500"></div>
+                    <span className="text-slate-400 text-xs font-medium">Executing workflow steps...</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleRunWorkflow}
+                    disabled={isRunningWorkflow}
+                    className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2 px-4 rounded-xl text-xs transition-all shadow-md shadow-violet-600/10 cursor-pointer active:scale-[0.98] transform"
+                  >
+                    {runId ? 'Run Workflow Again' : 'Run Workflow'}
+                  </button>
+                )}
+                
+                {runId && (
+                  <div className="pt-3 border-t border-white/5 space-y-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500 font-medium">Run ID:</span>
+                      <span className="text-slate-300 font-mono select-all text-right max-w-[150px] truncate" title={runId}>{runId}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500 font-medium">Status:</span>
+                      <span className="text-emerald-400 font-bold uppercase tracking-wider">{runStatus}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Triggers Card */}
             <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 space-y-4">
@@ -654,40 +660,7 @@ const handleRunWorkflow = async () => {
               )}
             </div>
 
-            {/* Manual Run Card */}
-            <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 space-y-4">
-              <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                <span>Manual Run</span>
-              </h3>
-              {isLoading ? (
-                <div className="flex items-center space-x-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-violet-500"></div>
-                  <span className="text-slate-400 text-sm">Running workflow...</span>
-                </div>
-              ) : (
-                <button
-                  onClick={handleRunWorkflow}
-                  disabled={!canEdit || isLoading}
-                  className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2 px-4 rounded-xl text-sm transition shadow-md shadow-violet-600/10 cursor-pointer"
-                >
-                  {runId ? (
-                    <>
-                      <span className="mr-2">Run ID: {runId}</span>
-                      <span className="ml-2 px-2 py-0.5 bg-slate-800/60 border border-white/5 text-slate-300 text-xs rounded">
-                        {status}
-                      </span>
-                    </>
-                  ) : (
-                    'Run Workflow'
-                  )}
-                </button>
-              )}
-              {runId && !isLoading && (
-                <div className="mt-3 text-sm text-slate-300">
-                  Workflow run completed successfully.
-                </div>
-              )}
-            </div>\n            {/* Dangerous Actions Box */}
+            {/* Dangerous Actions Box */}
             {canDelete && (
               <div className="bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 space-y-4">
                 <div>
