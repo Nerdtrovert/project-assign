@@ -1,0 +1,22 @@
+definition:
+  kind: synchronous
+  arguments:
+  - name: workflow_id
+    type: uuid!
+  output:
+    kind: object
+    fields:
+    - name: run_id
+      type: uuid!
+    - name: status
+      type: String!
+  handler:
+    endpoint: https://example.com/api/trigger-workflow-run
+    method: POST
+  headers:
+  - key: Content-Type
+    value: application/json
+  - key: X-Hasura-User-Id
+    value: from-session-variable: X-Hasura-User-Id
+  - key: X-Hasura-Role
+    value: from-session-variable: X-Hasura-Role

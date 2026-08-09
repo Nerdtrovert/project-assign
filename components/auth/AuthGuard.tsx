@@ -2,17 +2,26 @@
 
 import { useAuthenticationStatus } from '@nhost/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, ReactNode } from 'react'
+import { useEffect, ReactNode, useRef } from 'react'
+import nhostClient from '@/lib/nhost/client'
 
 export function AuthGuard({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthenticationStatus()
+  const { isAuthenticated, isLoading, isError } = useAuthenticationStatus()
   const router = useRouter()
+  const handledAuthErrorRef = useRef(false)
 
   useEffect(() => {
+    if (!isLoading && isError && !handledAuthErrorRef.current) {
+      handledAuthErrorRef.current = true
+      void nhostClient.auth.signOut()
+      router.push('/login')
+      return
+    }
+
     if (!isLoading && !isAuthenticated) {
       router.push('/login')
     }
-  }, [isLoading, isAuthenticated, router])
+  }, [isLoading, isAuthenticated, isError, router])
 
   if (isLoading) {
     return (
@@ -33,14 +42,21 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 }
 
 export function GuestGuard({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthenticationStatus()
+  const { isAuthenticated, isLoading, isError } = useAuthenticationStatus()
   const router = useRouter()
+  const handledAuthErrorRef = useRef(false)
 
   useEffect(() => {
+    if (!isLoading && isError && !handledAuthErrorRef.current) {
+      handledAuthErrorRef.current = true
+      void nhostClient.auth.signOut()
+      return
+    }
+
     if (!isLoading && isAuthenticated) {
       router.push('/workflows')
     }
-  }, [isLoading, isAuthenticated, router])
+  }, [isLoading, isAuthenticated, isError, router])
 
   if (isLoading) {
     return (

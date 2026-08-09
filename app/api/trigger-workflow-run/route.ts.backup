@@ -1,0 +1,245 @@
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function POST(request: NextRequest) {
+  try {
+    const { workflow_id } = await request.json()
+
+    // Get user ID from Hasura headers
+    const userId = request.headers.get('x-hasura-user-id') || request.headers.get('X-Hasura-User-Id')
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized: missing user ID' }, { status: 401 })
+    }
+
+    // Get admin secret from environment
+    const adminSecret = process.env.NHOST_ADMIN_SECRET
+    if (!adminSecret) {
+      console.error('NHOST_ADMIN_SECRET is not set')
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+
+    const graphqlEndpoint = `${process.env.NHOST_BACKEND_URL}/v1/graphql`
+
+    // Helper function to make a GraphQL request
+    const graphqlRequest = async (query: string, variables: Record<string, any> = {}) => {
+      const response = await fetch(graphqlEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-hasura-admin-secret': adminSecret,
+        },
+        body: JSON.stringify({ query, variables }),
+      })
+
+      const json = await response.json()
+      if (json.errors) {
+        throw new Error(json.errors.map((e: any) => e.message).join('. '))
+      }
+      return json.data
+    }
+
+    // 1. Load the workflow and check existence
+    const workflowData = await graphqlRequest(`
+      query GetWorkflow($id: uuid!) {
+        workflows_by_pk(id: $id) {
+          id
+          org_id
+          name
+        }
+      }
+    `, { id: workflow_id })
+
+    if (!workflowData?.workflows_by_pk) {
+      return NextResponse.json({ error: 'Workflow not found' }, { status: 404 })
+    }
+
+    const workflow = workflowData.workflows_by_pk
+    const orgId = workflow.org_id
+
+    // 2. Check user's membership and role in the organization
+    const memberData = await graphqlRequest(`
+      query CheckMember($org_id: uuid!, $user_id: uuid!) {
+        org_members(where: { org_id: { _eq: $org_id }, user_id: { _eq: $user_id } }) {
+          role
+        }
+      }
+    `, { org_id: orgId, user_id: userId })
+
+    if (!memberData?.org_members?.length) {
+      return NextResponse.json({ error: 'User is not a member of the organization' }, { status: 403 })
+    }
+
+    const role = memberData.org_members[0].role
+    if (role !== 'owner' && role !== 'editor') {
+      return NextResponse.json({ error: 'Insufficient permissions: only owners and editors can trigger workflows' }, { status: 403 })
+    }
+
+    // 3. Check organization quota
+    const orgData = await graphqlRequest(`
+      query GetOrganization($id: uuid!) {
+        organizations_by_pk(id: $id) {
+          quota_limit
+          quota_used
+        }
+      }
+    `, { id: orgId })
+
+    if (!orgData?.organizations_by_pk) {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+    }
+
+    const { quota_limit, quota_used } = orgData.organizations_by_pk
+    if (quota_used >= quota_limit) {
+      return NextResponse.json({ error: 'Organization quota exceeded' }, { status: 429 })
+    }
+
+    // 4. Create workflow_run
+    const runData = await graphqlRequest(`
+      mutation CreateWorkflowRun($workflow_id: uuid!, $created_by: uuid!) {
+        insert_workflow_runs_one(object: {
+          workflow_id: $workflow_id
+          status: "running"
+          created_by: $created_by
+          started_at: now()
+        }) {
+          id
+          status
+          started_at
+        }
+      }
+    `, { workflow_id: workflow_id, created_by: userId })
+
+    if (!runData?.insert_workflow_runs_one) {
+      return NextResponse.json({ error: 'Failed to create workflow run' }, { status: 500 })
+    }
+
+    const workflowRun = runData.insert_workflow_runs_one
+    const runId = workflowRun.id
+
+    // 5. Load workflow steps in position order
+    const stepsData = await graphqlRequest(`
+      query GetWorkflowSteps($workflow_id: uuid!) {
+        workflow_steps(where: { workflow_id: { _eq: $workflow_id } }, order_by: { position: asc }) {
+          id
+          type
+          config
+        }
+      }
+    `, { workflow_id: workflow_id })
+
+    const steps = stepsData?.workflow_steps || []
+
+    // 6. Initialize previous output as null
+    let previousOutput = null
+
+    // 7. Process each step
+    for (const step of steps) {
+      // Create step_run
+      const stepRunData = await graphqlRequest(`
+        mutation CreateStepRun($workflow_run_id: uuid!, $workflow_step_id: uuid!) {
+          insert_step_runs_one(object: {
+            workflow_run_id: $workflow_run_id
+            workflow_step_id: $workflow_step_id
+            status: "running"
+            input: $input
+            attempt_count: 1
+            started_at: now()
+          }) {
+            id
+            status
+            started_at
+          }
+        }
+      `, {
+        workflow_run_id: runId,
+        workflow_step_id: step.id,
+        input: previousOutput, // This is the output from the previous step
+      })
+
+      if (!stepRunData?.insert_step_runs_one) {
+        // If we fail to create a step run, we should update the workflow run to failed and break
+        await graphqlRequest(`
+          mutation UpdateWorkflowRunFailed($id: uuid!) {
+            update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: now() }) {
+              id
+            }
+          }
+        `, { id: runId })
+        return NextResponse.json({ error: 'Failed to create step run' }, { status: 500 })
+      }
+
+      const stepRun = stepRunData.insert_step_runs_one
+      const stepRunId = stepRun.id
+
+      try {
+        // 8. Execute the stub for the step
+        // Wait for a short delay (300-500 ms)
+        await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 200))
+
+        // Stub output
+        const stubOutput = {
+          stub: true,
+          step_type: step.type,
+          message: `Step ${step.type} executed successfully`,
+          step_id: step.id,
+          run_id: runId,
+        }
+
+        // 9. Update step_run with output and status completed
+        await graphqlRequest(`
+          mutation UpdateStepRunCompleted($id: uuid!, $output: jsonb) {
+            update_step_runs_by_pk(pk_columns: { id: $id }, _set: { output: $output, status: "completed", completed_at: now() }) {
+              id
+            }
+          }
+        `, { id: stepRunId, output: stubOutput })
+
+        // Set previous output for the next step
+        previousOutput = stubOutput
+      } catch (error) {
+        // If step execution fails, update step_run to failed and break
+        await graphqlRequest(`
+          mutation UpdateStepRunFailed($id: uuid!, $message: String!) {
+            update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", error: $message, completed_at: now() }) {
+              id
+            }
+          }
+        `, { id: stepRunId, message: error instanceof Error ? error.message : String(error) })
+
+        // Update workflow_run to failed
+        await graphqlRequest(`
+          mutation UpdateWorkflowRunFailed($id: uuid!) {
+            update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: now() }) {
+              id
+            }
+          }
+        `, { id: runId })
+        return NextResponse.json({ error: `Step execution failed: ${error}` }, { status: 500 })
+      }
+    }
+
+    // 10. All steps succeeded: update workflow_run to completed and increment quota
+    await graphqlRequest(`
+      mutation UpdateWorkflowRunCompleted($id: uuid!) {
+        update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "completed", completed_at: now() }) {
+          id
+        }
+      }
+    `, { id: runId })
+
+    // Increment quota_used by 1
+    await graphqlRequest(`
+      mutation IncrementQuota($id: uuid!) {
+        update_organizations_by_pk(pk_columns: { id: $id }, _inc: { quota_used: 1 }) {
+          id
+          quota_used
+        }
+      }
+    `, { id: orgId })
+
+    // 11. Return the workflow run ID and status
+    return NextResponse.json({ run_id: runId, status: 'completed' })
+  } catch (error) {
+    console.error('Error in triggerWorkflowRun:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

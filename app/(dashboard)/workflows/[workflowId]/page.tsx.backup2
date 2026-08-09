@@ -4,7 +4,6 @@ import { use, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation } from 'urql'
-import { TriggerWorkflowRunMutation } from '@/graphql/mutations/workflow-run'
 
 import { nodeTypeInfo } from '@/components/workflow/NodeTypeInfo'
 import { StepConfigUI } from '@/components/workflow/StepConfigUIs'
@@ -85,7 +84,6 @@ const [status, setStatus] = useState<string | null>(null)
   const [, updateWorkflowStep] = useMutation(UpdateWorkflowStepMutation)
   const [, deleteWorkflowStep] = useMutation(DeleteWorkflowStepMutation)
   const [, updateStepPosition] = useMutation(UpdateWorkflowStepPositionMutation)
-const [, triggerWorkflowRun] = useMutation(TriggerWorkflowRunMutation)
 
   const { data, fetching, error } = result
   const workflow = data?.workflows_by_pk
@@ -307,26 +305,30 @@ const handleRunWorkflow = async () => {
   setStatus(null)
 
   try {
-    const response = await triggerWorkflowRun({
-      workflow_id: workflowId,
+    const response = await fetch('/api/trigger-workflow-run', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application\/json',
+      },
+      body: JSON.stringify({ workflow_id: workflowId }),
     })
 
-    if (response.error) {
-      throw new Error(response.error.message)
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to trigger workflow')
     }
 
-    const data = response.data
-
-    setRunId(data.triggerWorkflowRun.run_id)
-    setStatus(data.triggerWorkflowRun.status)
+    setRunId(data.run_id)
+    setStatus(data.status)
   } catch (error) {
     console.error('Error triggering workflow:', error)
-    alert(`Failed to trigger workflow: ${error.message}`)
+    // Optionally, show an error to the user
+    alert()
   } finally {
     setIsLoading(false)
   }
 }
-
 
 const handleRunWorkflow = async () => {
   if (!canEdit) return
