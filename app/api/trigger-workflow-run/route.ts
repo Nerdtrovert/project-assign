@@ -185,10 +185,20 @@ export async function POST(request: NextRequest) {
     // Parse the Hasura Action body
     const body = await request.json()
 
-    // Extract workflow_id from body.input.workflow_id
-    const workflow_id = body?.input?.workflow_id
+    // Temporary SAFE diagnostic logging of incoming request shape
+    console.log('--- Hasura Action Webhook Diagnostic Log ---')
+    console.log('Body keys:', Object.keys(body || {}))
+    console.log('Body.input keys:', Object.keys(body?.input || {}))
+    console.log('Body.session_variables keys:', Object.keys(body?.session_variables || {}))
+    console.log('workflow_id in body:', !!body?.workflow_id)
+    console.log('workflow_id in body.input:', !!body?.input?.workflow_id)
+    console.log('x-hasura-user-id in body.session_variables:', !!body?.session_variables?.['x-hasura-user-id'])
+    console.log('--------------------------------------------')
+
+    // Extract workflow_id from the payload (primary source: body.input.workflow_id)
+    const workflow_id = body?.input?.workflow_id || body?.workflow_id || body?.input?.id || body?.id
     if (!workflow_id) {
-      return NextResponse.json({ error: 'Missing workflow_id in input' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing workflow_id in Hasura Action input' }, { status: 400 })
     }
 
     // Read the authenticated user ID from body.session_variables['x-hasura-user-id']

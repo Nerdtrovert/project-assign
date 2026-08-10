@@ -182,10 +182,28 @@ const evaluateCondition = (condition: any, previousOutput: any) => {
 
 export async function POST(request: NextRequest) {
   try {
-    const { workflow_id } = await request.json()
+    // Parse the Hasura Action body
+    const body = await request.json()
 
-    // Get user ID from Hasura headers
-    const userId = request.headers.get('x-hasura-user-id') || request.headers.get('X-Hasura-User-Id')
+    // Extract workflow_id from body.input.workflow_id
+    const workflow_id = body?.input?.workflow_id
+    if (!workflow_id) {
+      return NextResponse.json({ error: 'Missing workflow_id in input' }, { status: 400 })
+    }
+
+    // Read the authenticated user ID from body.session_variables['x-hasura-user-id']
+    let userId = body?.session_variables?.['x-hasura-user-id']
+    // Read the Hasura role from body.session_variables['x-hasura-role']
+    let role = body?.session_variables?.['x-hasura-role']
+
+    // For backwards compatibility during debugging, fallback to HTTP headers if session_variables is absent
+    if (!userId) {
+      userId = request.headers.get('x-hasura-user-id') || request.headers.get('X-Hasura-User-Id')
+    }
+    if (!role) {
+      role = request.headers.get('x-hasura-role') || request.headers.get('X-Hasura-Role')
+    }
+
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized: missing user ID' }, { status: 401 })
     }
@@ -248,8 +266,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User is not a member of the organization' }, { status: 403 })
     }
 
-    const role = memberData.org_members[0].role
-    if (role !== 'owner' && role !== 'editor') {
+    const memberRole = memberData.org_members[0].role
+    if (memberRole !== 'owner' && memberRole !== 'editor') {
       return NextResponse.json({ error: 'Insufficient permissions: only owners and editors can trigger workflows' }, { status: 403 })
     }
 
