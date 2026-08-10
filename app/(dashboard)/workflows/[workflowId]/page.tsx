@@ -624,9 +624,6 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                   const step = stepRun.workflow_step || {}
                                   const stepInfo = nodeTypeInfo[step.type] || { icon: 'STEP', label: step.type, color: 'border-zinc-800 bg-[#0e0e11] text-zinc-300' }
                                   const isStepRunExpanded = expandedStepRunId === stepRun.id
-                                  const stepRunDur = stepRun.started_at && stepRun.completed_at
-                                    ? `${((new Date(stepRun.completed_at).getTime() - new Date(stepRun.started_at).getTime()) / 1000).toFixed(2)}s`
-                                    : ''
 
                                   return (
                                     <div key={stepRun.id} className="flex items-start space-x-2 relative">
@@ -640,7 +637,6 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                             <span className="text-[9px] text-zinc-500 font-mono ml-2">Pos: {step.position}</span>
                                           </div>
                                           <div className="flex items-center space-x-2">
-                                            <span className="text-[9px] text-zinc-500 font-mono">{stepRunDur}</span>
                                             <span className={`text-[8px] font-bold uppercase tracking-wider px-1 py-0.2 rounded border ${
                                               stepRun.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
                                               stepRun.status === 'skipped' ? 'bg-zinc-800 border-zinc-700 text-zinc-400' :

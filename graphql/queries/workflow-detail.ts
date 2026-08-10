@@ -26,15 +26,13 @@ export const GetWorkflowDetailQuery = gql`
         started_at
         completed_at
         created_by
-        step_runs(order_by: { started_at: asc }) {
+        step_runs(order_by: { workflow_step: { position: asc } }) {
           id
           status
           attempt_count
           input
           output
           error
-          started_at
-          completed_at
           workflow_step {
             id
             name
