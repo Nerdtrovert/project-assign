@@ -191,9 +191,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing workflow_id in input' }, { status: 400 })
     }
 
-    // Read the authenticated user ID from body.session_variables["x-hasura-user-id"]
+    // Read the authenticated user ID from body.session_variables['x-hasura-user-id']
     let userId = body?.session_variables?.['x-hasura-user-id']
-    // Read the Hasura role from body.session_variables["x-hasura-role"]
+    // Read the Hasura role from body.session_variables['x-hasura-role']
     let role = body?.session_variables?.['x-hasura-role']
 
     // For backwards compatibility during debugging, fallback to HTTP headers if session_variables is absent

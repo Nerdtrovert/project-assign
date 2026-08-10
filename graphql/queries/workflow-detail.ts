@@ -20,14 +20,13 @@ export const GetWorkflowDetailQuery = gql`
         config
         enabled
       }
-      workflow_runs(order_by: { created_at: desc }, limit: 10) {
+      workflow_runs(order_by: { started_at: desc }, limit: 10) {
         id
         status
-        created_at
         started_at
         completed_at
         created_by
-        step_runs(order_by: { position: asc }) {
+        step_runs(order_by: { started_at: asc }) {
           id
           status
           attempt_count
