@@ -452,51 +452,106 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Organization quota exceeded' }, { status: 429 })
     }
 
-    // 4. Create workflow_run
-    currentOperation = 'CreateWorkflowRun'
-    console.log('[WORKFLOW] operation: CreateWorkflowRun')
-    const runData = await graphqlRequest(`
-      mutation CreateWorkflowRun($workflow_id: uuid!, $created_by: uuid!, $started_at: timestamptz!, $trigger_type: String!) {
-        insert_workflow_runs_one(object: {
-          workflow_id: $workflow_id
-          status: "running"
-          created_by: $created_by
-          started_at: $started_at
-          trigger_type: $trigger_type
-        }) {
-          id
-          status
-          started_at
-        }
-      }
-    `, {
-      workflow_id,
-      created_by: userId,
-      started_at: new Date().toISOString(),
-      trigger_type: 'manual',
-    })
+    // 4. Resolve / Create workflow run
+    const run_id = body?.input?.run_id || null
+    let workflowRun = null
 
-    if (!runData?.insert_workflow_runs_one) {
-      throw new Error('CreateWorkflowRun returned no workflow run')
+    if (run_id) {
+      currentOperation = 'GetWorkflowRun'
+      console.log('[WORKFLOW] operation: GetWorkflowRun')
+      const runQueryData = await graphqlRequest(`
+        query GetWorkflowRun($id: uuid!) {
+          workflow_runs_by_pk(id: $id) {
+            id
+            workflow_id
+            status
+            trigger_type
+            workflow {
+              id
+              org_id
+              name
+            }
+          }
+        }
+      `, { id: run_id })
+
+      if (!runQueryData?.workflow_runs_by_pk) {
+        return NextResponse.json({ error: 'Workflow run not found' }, { status: 404 })
+      }
+
+      const run = runQueryData.workflow_runs_by_pk
+      if (run.workflow.id !== workflow_id) {
+        return NextResponse.json({ error: 'Workflow ID mismatch for run' }, { status: 400 })
+      }
+
+      currentOperation = 'UpdateWorkflowRunRunning'
+      console.log('[WORKFLOW] operation: UpdateWorkflowRunRunning')
+      await graphqlRequest(`
+        mutation UpdateWorkflowRunRunning($id: uuid!) {
+          update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "running" }) {
+            id
+          }
+        }
+      `, { id: run_id })
+
+      workflowRun = { id: run_id, status: 'running' }
+      runId = run_id
+    } else {
+      currentOperation = 'CreateWorkflowRun'
+      console.log('[WORKFLOW] operation: CreateWorkflowRun')
+      const runData = await graphqlRequest(`
+        mutation CreateWorkflowRun($workflow_id: uuid!, $created_by: uuid!, $started_at: timestamptz!, $trigger_type: String!) {
+          insert_workflow_runs_one(object: {
+            workflow_id: $workflow_id
+            status: "running"
+            created_by: $created_by
+            started_at: $started_at
+            trigger_type: $trigger_type
+          }) {
+            id
+            status
+            started_at
+          }
+        }
+      `, {
+        workflow_id,
+        created_by: userId,
+        started_at: new Date().toISOString(),
+        trigger_type: body?.input?.trigger_type || 'manual',
+      })
+
+      if (!runData?.insert_workflow_runs_one) {
+        throw new Error('CreateWorkflowRun returned no workflow run')
+      }
+
+      workflowRun = runData.insert_workflow_runs_one
+      runId = workflowRun.id
     }
 
-    const workflowRun = runData.insert_workflow_runs_one
-    runId = workflowRun.id
-
-    // 5. Load workflow steps in position order
-    currentOperation = 'LoadWorkflowSteps'
-    console.log('[WORKFLOW] operation: LoadWorkflowSteps')
-    const stepsData = await graphqlRequest(`
-      query GetWorkflowSteps($workflow_id: uuid!) {
+    // 5. Load workflow steps and existing step runs
+    currentOperation = 'LoadWorkflowStepsAndRuns'
+    console.log('[WORKFLOW] operation: LoadWorkflowStepsAndRuns')
+    const data = await graphqlRequest(`
+      query GetStepsAndRuns($workflow_id: uuid!, $run_id: uuid!) {
         workflow_steps(where: { workflow_id: { _eq: $workflow_id } }, order_by: { position: asc }) {
           id
           type
           config
+          position
+        }
+        step_runs(where: { workflow_run_id: { _eq: $run_id } }) {
+          id
+          workflow_step_id
+          status
+          output
+          error
+          input
         }
       }
-    `, { workflow_id: workflow_id })
+    `, { workflow_id, run_id: runId })
 
-    const steps = stepsData?.workflow_steps || []
+    const steps = data?.workflow_steps || []
+    const stepRuns = data?.step_runs || []
 
     // 6. Initialize previous output with customer message if provided
     let previousOutput = customer_message
@@ -509,6 +564,44 @@ export async function POST(request: NextRequest) {
       const step = steps[currentStepIndex]
       const stepType = step.type
       const stepConfig = step.config || {}
+
+      // Check if this step already executed in a previous attempt of the same run
+      const existingStepRun = stepRuns.find((r: any) => r.workflow_step_id === step.id)
+
+      if (existingStepRun) {
+        if (existingStepRun.status === 'completed' || existingStepRun.status === 'skipped') {
+          console.log(`[WORKFLOW] Step ${step.id} (${stepType}) already ran with status ${existingStepRun.status}. Reusing output.`)
+          previousOutput = existingStepRun.output
+          
+          if (existingStepRun.status === 'skipped') {
+            skipNextStep = false
+          } else {
+            if (stepType === 'conditional_branch' && existingStepRun.output) {
+              const conditionMet = existingStepRun.output.condition_met
+              const skipOnTrue = stepConfig.skipOnTrue || false
+              const skipOnFalse = stepConfig.skipOnFalse || false
+              if ((conditionMet && skipOnTrue) || (!conditionMet && skipOnFalse)) {
+                skipNextStep = true
+              }
+            }
+          }
+          currentStepIndex += 1
+          continue
+        }
+
+        if (existingStepRun.status === 'paused') {
+          console.log(`[WORKFLOW] Step ${step.id} is paused for approval. Pausing execution.`)
+          currentOperation = 'MarkWorkflowRunWaiting'
+          await graphqlRequest(`
+            mutation UpdateWorkflowRunWaiting($id: uuid!) {
+              update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "paused" }) {
+                id
+              }
+            }
+          `, { id: runId })
+          return NextResponse.json({ run_id: runId, status: 'paused' })
+        }
+      }
 
       // If we are supposed to skip this step, mark it as skipped and continue
       if (skipNextStep) {
@@ -672,10 +765,30 @@ export async function POST(request: NextRequest) {
             }
             break
           }
+          case 'approval_gate': {
+            currentOperation = 'MarkStepRunWaiting'
+            console.log('[WORKFLOW] Reached approval gate. Pausing execution.')
+            await graphqlRequest(`
+              mutation UpdateStepRunWaiting($id: uuid!, $message: String!) {
+                update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "paused", output: { approved: false, message: $message } }) {
+                  id
+                }
+              }
+            `, { id: stepRunId, message: stepConfig.message || 'Please review and approve this step.' })
+
+            currentOperation = 'MarkWorkflowRunWaiting'
+            await graphqlRequest(`
+              mutation UpdateWorkflowRunWaiting($id: uuid!) {
+                update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "paused" }) {
+                  id
+                }
+              }
+            `, { id: runId })
+
+            return NextResponse.json({ run_id: runId, status: 'paused' })
+          }
           case 'db_write':
           case 'notify':
-          case 'approval_gate':
-            // For now, we'll treat these as stubs (as per the instruction not to implement them yet)
             stepOutput = {
               stub: true,
               step_type: stepType,
