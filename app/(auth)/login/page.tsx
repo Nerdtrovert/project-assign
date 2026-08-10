@@ -31,7 +31,7 @@ export default function LoginPage() {
       if (res.error) {
         setErrorMsg(res.error.message || 'Login failed. Please check your credentials.')
       } else {
-        router.push('/workflows')
+        router.push('/')
       }
     } catch (err: unknown) {
       console.error('Login error:', err)

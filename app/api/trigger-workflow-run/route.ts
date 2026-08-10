@@ -17,20 +17,47 @@ if (!NHOST_BACKEND_URL) {
 
 // Helper function to make a GraphQL request to Hasura (using admin secret for server-side operations)
 const graphqlRequest = async (query: string, variables: Record<string, any> = {}) => {
-  const response = await fetch(`${NHOST_BACKEND_URL}/v1/graphql`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-hasura-admin-secret': NHOST_ADMIN_SECRET || '',
-    },
-    body: JSON.stringify({ query, variables }),
-  })
+  const opMatch = query.match(/(query|mutation)\s+(\w+)/)
+  const opName = opMatch ? opMatch[2] : 'global_graphql_op'
 
-  const json = await response.json()
-  if (json.errors) {
-    throw new Error(json.errors.map((e: any) => e.message).join('. '))
+  console.log(`[GRAPHQL-REQUEST] Starting: ${opName}`)
+
+  try {
+    const response = await fetch(`${NHOST_BACKEND_URL}/v1/graphql`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hasura-admin-secret': NHOST_ADMIN_SECRET || '',
+      },
+      body: JSON.stringify({ query, variables }),
+    })
+
+    console.log(`[GRAPHQL-RESPONSE] ${opName} HTTP Status: ${response.status} ${response.statusText}`)
+
+    if (!response.ok) {
+      const text = await response.text()
+      console.error(`[GRAPHQL-RESPONSE] ${opName} HTTP Non-2xx response:`, text.slice(0, 1000))
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const json = await response.json()
+    const hasErrors = !!json.errors
+    const hasData = !!json.data
+
+    console.log(`[GRAPHQL-RESPONSE] ${opName} hasData: ${hasData}, hasErrors: ${hasErrors}`)
+
+    if (json.errors) {
+      json.errors.forEach((err: any, idx: number) => {
+        console.error(`[GRAPHQL-RESPONSE] ${opName} Error #${idx + 1}: ${err.message} at ${JSON.stringify(err.path || [])} (Code: ${err.extensions?.code || 'none'})`)
+      })
+      throw new Error(json.errors.map((e: any) => e.message).join('. '))
+    }
+
+    return json.data
+  } catch (err: any) {
+    console.error(`[GRAPHQL-ERROR] ${opName} failed: ${err.name} - ${err.message}`)
+    throw err
   }
-  return json.data
 }
 
 // Helper function to make an HTTP request with retry logic
@@ -224,24 +251,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
+    // Verify environment variables presence (boolean only, no values logged)
+    console.log('[DIAGNOSTIC] NHOST_ADMIN_SECRET present:', !!process.env.NHOST_ADMIN_SECRET)
+    console.log('[DIAGNOSTIC] NHOST_BACKEND_URL present:', !!process.env.NHOST_BACKEND_URL)
+    console.log('[DIAGNOSTIC] GROQ_API_KEY present:', !!process.env.GROQ_API_KEY)
+
     const graphqlEndpoint = `${process.env.NHOST_BACKEND_URL}/v1/graphql`
 
     // Helper function to make a GraphQL request
     const graphqlRequest = async (query: string, variables: Record<string, any> = {}) => {
-      const response = await fetch(graphqlEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-hasura-admin-secret': adminSecret,
-        },
-        body: JSON.stringify({ query, variables }),
-      })
+      const opMatch = query.match(/(query|mutation)\s+(\w+)/)
+      const opName = opMatch ? opMatch[2] : 'local_graphql_op'
 
-      const json = await response.json()
-      if (json.errors) {
-        throw new Error(json.errors.map((e: any) => e.message).join('. '))
+      console.log(`[GRAPHQL-REQUEST] Starting: ${opName}`)
+
+      try {
+        const response = await fetch(graphqlEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hasura-admin-secret': adminSecret,
+          },
+          body: JSON.stringify({ query, variables }),
+        })
+
+        console.log(`[GRAPHQL-RESPONSE] ${opName} HTTP Status: ${response.status} ${response.statusText}`)
+
+        if (!response.ok) {
+          const text = await response.text()
+          console.error(`[GRAPHQL-RESPONSE] ${opName} HTTP Non-2xx response:`, text.slice(0, 1000))
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+
+        const json = await response.json()
+        const hasErrors = !!json.errors
+        const hasData = !!json.data
+
+        console.log(`[GRAPHQL-RESPONSE] ${opName} hasData: ${hasData}, hasErrors: ${hasErrors}`)
+
+        if (json.errors) {
+          json.errors.forEach((err: any, idx: number) => {
+            console.error(`[GRAPHQL-RESPONSE] ${opName} Error #${idx + 1}: ${err.message} at ${JSON.stringify(err.path || [])} (Code: ${err.extensions?.code || 'none'})`)
+          })
+          throw new Error(json.errors.map((e: any) => e.message).join('. '))
+        }
+
+        return json.data
+      } catch (err: any) {
+        console.error(`[GRAPHQL-ERROR] ${opName} failed: ${err.name} - ${err.message}`)
+        throw err
       }
-      return json.data
     }
 
     // 1. Load the workflow and check existence

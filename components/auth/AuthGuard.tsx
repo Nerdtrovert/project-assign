@@ -65,7 +65,7 @@ export function GuestGuard({ children }: { children: ReactNode }) {
     }
 
     if (!isLoading && isAuthenticated) {
-      router.push('/workflows')
+      router.push('/')
     }
   }, [isLoading, isAuthenticated, isError, router, isConfigured])
 
