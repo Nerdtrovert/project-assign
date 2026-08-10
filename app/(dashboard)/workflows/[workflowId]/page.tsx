@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useEffect } from 'react'
+import { use, useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation } from 'urql'
@@ -8,6 +8,7 @@ import { useQuery, useMutation } from 'urql'
 import { nodeTypeInfo } from '@/components/workflow/NodeTypeInfo'
 import { StepConfigUI } from '@/components/workflow/StepConfigUIs'
 import { GetWorkflowDetailQuery } from '@/graphql/queries/workflow-detail'
+import { GetWorkflowLiveStatusQuery } from '@/graphql/queries/workflow-live-status'
 import {
   InsertWorkflowStepMutation,
   UpdateWorkflowStepMutation,
@@ -36,6 +37,25 @@ function ensureMutationSucceeded(result: any, fallbackMessage: string) {
   if (result.error) {
     throw new Error(result.error.message || fallbackMessage)
   }
+}
+
+const LIVE_RUN_STATUSES = new Set(['running', 'paused', 'waiting_for_approval'])
+
+function normalizeStatus(status?: string | null): string {
+  return (status || '').toLowerCase().replace(/\s+/g, '_')
+}
+
+function isLiveRunStatus(status?: string | null): boolean {
+  return LIVE_RUN_STATUSES.has(normalizeStatus(status))
+}
+
+function mergeLatestRun(runs: any[], latestRun: any): any[] {
+  const runIndex = runs.findIndex((run) => run.id === latestRun.id)
+  const nextRuns = runIndex === -1
+    ? [latestRun, ...runs]
+    : runs.map((run, index) => index === runIndex ? { ...run, ...latestRun } : run)
+
+  return JSON.stringify(nextRuns) === JSON.stringify(runs) ? runs : nextRuns
 }
 
 export default function WorkflowDetailPage({ params }: { params: Promise<{ workflowId: string }> }) {
@@ -74,6 +94,11 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
     query: GetWorkflowDetailQuery,
     variables: { id: workflowId },
   })
+  const [liveStatusResult, reexecuteLiveStatus] = useQuery({
+    query: GetWorkflowLiveStatusQuery,
+    variables: { workflowId },
+    pause: true,
+  })
 
   // Mutations
   const [, updateWorkflow] = useMutation(UpdateWorkflowMutation)
@@ -85,14 +110,14 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
   const [, triggerWorkflowRun] = useMutation(TriggerWorkflowRunMutation)
 
   const [approvingRunId, setApprovingRunId] = useState<string | null>(null)
+  const [liveWorkflowRuns, setLiveWorkflowRuns] = useState<any[]>([])
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollingRunIdRef = useRef<string | null>(null)
+  const reexecuteLiveStatusRef = useRef(reexecuteLiveStatus)
 
-  // Polling loop to get real database state updates without refreshing
   useEffect(() => {
-    const interval = setInterval(() => {
-      reexecute({ requestPolicy: 'network-only' })
-    }, 1500)
-    return () => clearInterval(interval)
-  }, [reexecute])
+    reexecuteLiveStatusRef.current = reexecuteLiveStatus
+  }, [reexecuteLiveStatus])
 
   const handleApproveRun = async (runId: string) => {
     setApprovingRunId(runId)
@@ -110,7 +135,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
         const errJson = await res.json()
         throw new Error(errJson.error || errJson.details || 'Approval failed')
       }
-      reexecute({ requestPolicy: 'network-only' })
+      reexecuteLiveStatus({ requestPolicy: 'network-only' })
     } catch (err: any) {
       console.error('Approval failed:', err)
       alert(`Approval error: ${err.message}`)
@@ -121,6 +146,14 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
 
   const { data, fetching, error } = result
   const workflow = data?.workflows_by_pk
+  const workflowRuns = liveWorkflowRuns.length > 0 ? liveWorkflowRuns : (workflow?.workflow_runs ?? [])
+  const latestRun = workflowRuns[0]
+  const activePollingRunId = latestRun && isLiveRunStatus(latestRun.status)
+    ? latestRun.id
+    : runId && isLiveRunStatus(runStatus)
+      ? runId
+      : null
+  const isInitialLoading = fetching && !workflow
   const members = data?.org_members || []
   const orderedSteps = [...(workflow?.workflow_steps ?? [])].sort((a: any, b: any) => a.position - b.position)
 
@@ -131,6 +164,62 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
 
   const canEdit = userRole === 'owner' || userRole === 'editor'
   const canDelete = userRole === 'owner' || userRole === 'editor'
+
+  useEffect(() => {
+    if (workflow?.workflow_runs) {
+      setLiveWorkflowRuns((currentRuns) => {
+        const nextRuns = workflow.workflow_runs
+        return JSON.stringify(currentRuns) === JSON.stringify(nextRuns) ? currentRuns : nextRuns
+      })
+    }
+  }, [workflow?.workflow_runs])
+
+  useEffect(() => {
+    const latestLiveRun = liveStatusResult.data?.workflow_runs?.[0]
+    if (!latestLiveRun) return
+
+    setLiveWorkflowRuns((currentRuns) => mergeLatestRun(currentRuns, latestLiveRun))
+
+    if (runId === latestLiveRun.id && runStatus !== latestLiveRun.status) {
+      setRunStatus(latestLiveRun.status)
+    }
+  }, [liveStatusResult.data, runId, runStatus])
+
+  useEffect(() => {
+    if (!activePollingRunId) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+        pollingRunIdRef.current = null
+      }
+      return
+    }
+
+    if (pollingIntervalRef.current && pollingRunIdRef.current === activePollingRunId) {
+      return
+    }
+
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+    }
+
+    pollingRunIdRef.current = activePollingRunId
+    reexecuteLiveStatusRef.current({ requestPolicy: 'network-only' })
+
+    const interval = setInterval(() => {
+      reexecuteLiveStatusRef.current({ requestPolicy: 'network-only' })
+    }, 1500)
+
+    pollingIntervalRef.current = interval
+
+    return () => {
+      if (pollingIntervalRef.current === interval) {
+        clearInterval(interval)
+        pollingIntervalRef.current = null
+        pollingRunIdRef.current = null
+      }
+    }
+  }, [activePollingRunId])
 
   // Initialize edit fields
   useEffect(() => {
@@ -325,7 +414,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
 
       setRunId(runData.run_id)
       setRunStatus(runData.status)
-      reexecute() // Refresh execution logs
+      reexecuteLiveStatus({ requestPolicy: 'network-only' })
     } catch (error: any) {
       console.error('Error triggering workflow:', error)
       alert(`Failed to trigger workflow: ${error.message}`)
@@ -346,7 +435,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
       </div>
 
       {/* Loading state */}
-      {fetching && (
+      {isInitialLoading && (
         <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-zinc-600 mb-3"></div>
           <p className="text-zinc-400 text-xs">Loading workflow configuration...</p>
@@ -354,7 +443,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
       )}
 
       {/* Error state */}
-      {!fetching && error && (
+      {!isInitialLoading && error && (
         <div className="bg-rose-950/20 border border-rose-800/30 text-rose-300 rounded-lg p-5 text-xs">
           <h4 className="font-semibold">Query Failed</h4>
           <p className="mt-1 text-zinc-400 font-mono">{error.message}</p>
@@ -367,7 +456,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
       )}
 
       {/* Main Detail view */}
-      {!fetching && !error && workflow && (
+      {!isInitialLoading && !error && workflow && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full min-w-0">
           
           {/* Main Info Box */}
@@ -630,17 +719,17 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
               <h2 className="text-sm font-semibold text-zinc-100 flex items-center space-x-2">
                 <span>Execution History</span>
                 <span className="text-[10px] font-semibold px-2 py-0.5 bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-full">
-                  {workflow.workflow_runs?.length || 0}
+                  {workflowRuns.length}
                 </span>
               </h2>
 
-              {!workflow.workflow_runs || workflow.workflow_runs.length === 0 ? (
+              {workflowRuns.length === 0 ? (
                 <div className="border border-dashed border-zinc-800 rounded-md p-6 text-center text-zinc-500 text-xs">
                   No execution runs recorded. Use the "Run Workflow" option to test.
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {workflow.workflow_runs.map((run: any) => {
+                  {workflowRuns.map((run: any) => {
                     const isExpanded = expandedRunId === run.id
                     const startedTime = run.started_at ? new Date(run.started_at).toLocaleString() : 'N/A'
                     const duration = run.started_at && run.completed_at
