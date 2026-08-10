@@ -885,8 +885,6 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                   onConfigChange={(newConfig) => {
                     setStepConfigStr(JSON.stringify(newConfig, null, 2))
                   }}
-                  steps={orderedSteps}
-                  currentStepId={editingStepId}
                 />
               </div>
 

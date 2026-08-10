@@ -242,72 +242,43 @@ export function NotifyConfig({ config, onConfigChange }: { config: any; onConfig
 export function ConditionalBranchConfig({
   config,
   onConfigChange,
-  steps = [],
-  currentStepId,
 }: {
   config: any
   onConfigChange: (config: any) => void
-  steps?: any[]
-  currentStepId?: string | null
 }) {
   const [condition, setCondition] = useState(config?.condition || '')
-  
-  // Filter out the conditional step itself from targets
-  const validTargets = steps.filter(s => s.id !== currentStepId)
+  const [skipOnTrue, setSkipOnTrue] = useState(config?.skipOnTrue || false)
+  const [skipOnFalse, setSkipOnFalse] = useState(config?.skipOnFalse || false)
 
-  // Validate stored paths: must be "", "end", or a valid step ID in steps
-  const validatePath = (path: string) => {
-    if (path === '' || path === 'end') return path
-    if (validTargets.some(s => s.id === path)) return path
-    return '' // fallback/reset to default
-  }
-
-  const [truePath, setTruePath] = useState(validatePath(config?.truePath || ''))
-  const [falsePath, setFalsePath] = useState(validatePath(config?.falsePath || ''))
-
-  // Find immediate next step to calculate jump/skip flags
-  const currentIdx = steps.findIndex(s => s.id === currentStepId)
-  const nextStep = currentIdx !== -1 && currentIdx + 1 < steps.length ? steps[currentIdx + 1] : null
-
-  const getSkipFlag = (pathValue: string) => {
-    if (pathValue === '') return false // continue sequentially
-    if (pathValue === 'end') return true // terminate workflow
-    if (nextStep && pathValue === nextStep.id) return false // immediate next step
-    return true // skip to non-sequential step
-  }
-
-  const handleChange = (newCond: string, newTrue: string, newFalse: string) => {
-    const validatedTrue = validatePath(newTrue)
-    const validatedFalse = validatePath(newFalse)
-    
-    setTruePath(validatedTrue)
-    setFalsePath(validatedFalse)
+  const handleChange = (newCond: string, newTrueSkip: boolean, newFalseSkip: boolean) => {
     setCondition(newCond)
+    setSkipOnTrue(newTrueSkip)
+    setSkipOnFalse(newFalseSkip)
+
+    // Preserve the existing JSON schema: truePath/falsePath point to 'skip' if true, or are empty
+    const finalTruePath = newTrueSkip ? 'skip' : ''
+    const finalFalsePath = newFalseSkip ? 'skip' : ''
 
     onConfigChange({
       condition: newCond,
-      truePath: validatedTrue,
-      falsePath: validatedFalse,
-      skipOnTrue: getSkipFlag(validatedTrue),
-      skipOnFalse: getSkipFlag(validatedFalse),
+      truePath: finalTruePath,
+      falsePath: finalFalsePath,
+      skipOnTrue: newTrueSkip,
+      skipOnFalse: newFalseSkip,
     })
   }
 
-  // Auto-sync config on mount/prop change to ensure consistency
+  // Ensure initial configuration fields are safely synced in memory
   useEffect(() => {
-    const validatedTrue = validatePath(config?.truePath || '')
-    const validatedFalse = validatePath(config?.falsePath || '')
+    const initialTrueSkip = config?.skipOnTrue || config?.truePath === 'skip'
+    const initialFalseSkip = config?.skipOnFalse || config?.falsePath === 'skip'
     
-    if (validatedTrue !== config?.truePath || validatedFalse !== config?.falsePath) {
-      onConfigChange({
-        condition,
-        truePath: validatedTrue,
-        falsePath: validatedFalse,
-        skipOnTrue: getSkipFlag(validatedTrue),
-        skipOnFalse: getSkipFlag(validatedFalse),
-      })
+    if (initialTrueSkip !== skipOnTrue || initialFalseSkip !== skipOnFalse || config?.condition !== condition) {
+      setSkipOnTrue(initialTrueSkip)
+      setSkipOnFalse(initialFalseSkip)
+      setCondition(config?.condition || '')
     }
-  }, [steps, currentStepId])
+  }, [config])
 
   return (
     <div className="space-y-3">
@@ -318,7 +289,7 @@ export function ConditionalBranchConfig({
         <input
           type="text"
           value={condition}
-          onChange={(e) => handleChange(e.target.value, truePath, falsePath)}
+          onChange={(e) => handleChange(e.target.value, skipOnTrue, skipOnFalse)}
           className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
           placeholder="e.g., previous.output.classification == urgent"
         />
@@ -327,41 +298,34 @@ export function ConditionalBranchConfig({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-            True Path
+            If True
           </label>
           <select
-            value={truePath}
-            onChange={(e) => handleChange(condition, e.target.value, falsePath)}
+            value={skipOnTrue ? 'skip' : ''}
+            onChange={(e) => handleChange(condition, e.target.value === 'skip', skipOnFalse)}
             className="w-full px-2 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors cursor-pointer"
           >
             <option value="">Continue to next step</option>
-            <option value="end">End workflow</option>
-            {validTargets.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name || s.type} (Pos {s.position + 1})
-              </option>
-            ))}
+            <option value="skip">Skip next step</option>
           </select>
         </div>
 
         <div>
           <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-            False Path
+            If False
           </label>
           <select
-            value={falsePath}
-            onChange={(e) => handleChange(condition, truePath, e.target.value)}
+            value={skipOnFalse ? 'skip' : ''}
+            onChange={(e) => handleChange(condition, skipOnTrue, e.target.value === 'skip')}
             className="w-full px-2 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors cursor-pointer"
           >
             <option value="">Continue to next step</option>
-            <option value="end">End workflow</option>
-            {validTargets.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name || s.type} (Pos {s.position + 1})
-              </option>
-            ))}
+            <option value="skip">Skip next step</option>
           </select>
         </div>
+      </div>
+      <div className="text-[10px] text-zinc-550 leading-normal bg-zinc-950/20 p-2 rounded border border-zinc-900">
+        💡 <strong>Runner Flow Info:</strong> The execution runner is sequential. Selecting <em>"Skip next step"</em> causes the immediate downstream action (e.g. HTTP Webhook) to be skipped when this branch path evaluates.
       </div>
     </div>
   )
@@ -439,14 +403,7 @@ export function StepConfigUI({
     case 'notify':
       return <NotifyConfig config={config} onConfigChange={onConfigChange} />
     case 'conditional_branch':
-      return (
-        <ConditionalBranchConfig
-          config={config}
-          onConfigChange={onConfigChange}
-          steps={steps}
-          currentStepId={currentStepId}
-        />
-      )
+      return <ConditionalBranchConfig config={config} onConfigChange={onConfigChange} />
     case 'approval_gate':
       return <ApprovalGateConfig config={config} onConfigChange={onConfigChange} />
     default:
