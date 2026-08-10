@@ -89,7 +89,9 @@ const graphqlRequest = async (query: string, variables: Record<string, unknown> 
           code: graphqlError.extensions?.code ?? null,
         })
       })
-      const err = new Error(`GraphQL operation ${opName} failed`) as WorkflowExecutionError
+      const err = new Error(
+        `GraphQL ${opName} failed: ${json.errors.map((graphqlError: { message: string }) => graphqlError.message).join('; ')}`
+      ) as WorkflowExecutionError
       err.operation = opName
       throw err
     }
@@ -256,9 +258,26 @@ const evaluateCondition = (condition: any, previousOutput: any) => {
 }
 
 export async function POST(request: NextRequest) {
+  let currentOperation: string | undefined
+
   try {
+    console.log('[WORKFLOW] triggerWorkflowRun handler reached')
+
     // Parse the Hasura Action body
     const body = await request.json()
+
+    console.log('[WORKFLOW] input received:', {
+      hasInput: !!body?.input,
+      hasWorkflowId: !!body?.input?.workflow_id,
+      hasSessionVariables: !!body?.session_variables,
+      hasUserId: !!body?.session_variables?.['x-hasura-user-id'],
+    })
+    console.log('[WORKFLOW] environment:', {
+      hasAdminSecret: !!NHOST_ADMIN_SECRET,
+      hasBackendUrl: !!NHOST_BACKEND_URL,
+      hasGraphqlEndpoint: !!NHOST_GRAPHQL_ENDPOINT,
+      hasGroqApiKey: !!GROQ_API_KEY,
+    })
 
     if (body?.action?.name !== 'triggerWorkflowRun') {
       return NextResponse.json({ error: 'Invalid Hasura Action request' }, { status: 400 })
@@ -278,11 +297,12 @@ export async function POST(request: NextRequest) {
     // Get admin secret from environment
     const adminSecret = process.env.NHOST_ADMIN_SECRET
     if (!adminSecret) {
-      console.error('NHOST_ADMIN_SECRET is not set')
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+      throw new Error('NHOST_ADMIN_SECRET is not configured')
     }
 
     // 1. Load the workflow and check existence
+    currentOperation = 'GetWorkflow'
+    console.log('[WORKFLOW] operation: GetWorkflow')
     const workflowData = await graphqlRequest(`
       query GetWorkflow($id: uuid!) {
         workflows_by_pk(id: $id) {
@@ -301,8 +321,10 @@ export async function POST(request: NextRequest) {
     const orgId = workflow.org_id
 
     // 2. Check user's membership and role in the organization
+    currentOperation = 'CheckMembership'
+    console.log('[WORKFLOW] operation: CheckMembership')
     const memberData = await graphqlRequest(`
-      query CheckMember($org_id: uuid!, $user_id: uuid!) {
+      query CheckMembership($org_id: uuid!, $user_id: uuid!) {
         org_members(where: { org_id: { _eq: $org_id }, user_id: { _eq: $user_id } }) {
           role
         }
@@ -319,8 +341,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Check organization quota
+    currentOperation = 'CheckQuota'
+    console.log('[WORKFLOW] operation: CheckQuota')
     const orgData = await graphqlRequest(`
-      query GetOrganization($id: uuid!) {
+      query CheckQuota($id: uuid!) {
         organizations_by_pk(id: $id) {
           quota_limit
           quota_used
@@ -338,6 +362,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Create workflow_run
+    currentOperation = 'CreateWorkflowRun'
+    console.log('[WORKFLOW] operation: CreateWorkflowRun')
     const runData = await graphqlRequest(`
       mutation CreateWorkflowRun($workflow_id: uuid!, $created_by: uuid!) {
         insert_workflow_runs_one(object: {
@@ -354,13 +380,15 @@ export async function POST(request: NextRequest) {
     `, { workflow_id: workflow_id, created_by: userId })
 
     if (!runData?.insert_workflow_runs_one) {
-      return NextResponse.json({ error: 'Failed to create workflow run' }, { status: 500 })
+      throw new Error('CreateWorkflowRun returned no workflow run')
     }
 
     const workflowRun = runData.insert_workflow_runs_one
     const runId = workflowRun.id
 
     // 5. Load workflow steps in position order
+    currentOperation = 'LoadWorkflowSteps'
+    console.log('[WORKFLOW] operation: LoadWorkflowSteps')
     const stepsData = await graphqlRequest(`
       query GetWorkflowSteps($workflow_id: uuid!) {
         workflow_steps(where: { workflow_id: { _eq: $workflow_id } }, order_by: { position: asc }) {
@@ -388,6 +416,8 @@ export async function POST(request: NextRequest) {
       // If we are supposed to skip this step, mark it as skipped and continue
       if (skipNextStep) {
         // Create a step_run for this step with status skipped
+        currentOperation = 'CreateSkippedStepRun'
+        console.log('[WORKFLOW] operation: CreateSkippedStepRun')
         const skippedStepRunData = await graphqlRequest(`
           mutation CreateSkippedStepRun($workflow_run_id: uuid!, $workflow_step_id: uuid!, $input: jsonb, $reason: jsonb!) {
             insert_step_runs_one(object: {
@@ -409,7 +439,7 @@ export async function POST(request: NextRequest) {
         })
 
         if (!skippedStepRunData?.insert_step_runs_one) {
-          return NextResponse.json({ error: 'Failed to create skipped step run' }, { status: 500 })
+          throw new Error('CreateSkippedStepRun returned no step run')
         }
 
         // Reset skipNextStep
@@ -425,6 +455,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Create step_run for this step (we'll update it later based on execution)
+      currentOperation = 'CreateStepRun'
+      console.log('[WORKFLOW] operation: CreateStepRun')
       const stepRunData = await graphqlRequest(`
         mutation CreateStepRun($workflow_run_id: uuid!, $workflow_step_id: uuid!, $input: jsonb) {
           insert_step_runs_one(object: {
@@ -445,6 +477,8 @@ export async function POST(request: NextRequest) {
 
       if (!stepRunData?.insert_step_runs_one) {
         // If we fail to create a step run, we should update the workflow run to failed and break
+        currentOperation = 'MarkWorkflowRunFailed'
+        console.log('[WORKFLOW] operation: MarkWorkflowRunFailed')
         await graphqlRequest(`
           mutation UpdateWorkflowRunFailed($id: uuid!) {
             update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: now() }) {
@@ -452,7 +486,7 @@ export async function POST(request: NextRequest) {
             }
           }
         `, { id: runId })
-        return NextResponse.json({ error: 'Failed to create step run' }, { status: 500 })
+        throw new Error('CreateStepRun returned no step run')
       }
 
       const stepRun = stepRunData.insert_step_runs_one
@@ -463,6 +497,7 @@ export async function POST(request: NextRequest) {
       let attemptCount = 1
 
       try {
+        currentOperation = 'ExecuteStep'
         // 8. Execute the step based on type
         switch (stepType) {
           case 'llm_call': {
@@ -553,6 +588,8 @@ export async function POST(request: NextRequest) {
         // If we have a stepOutput from the step execution, we'll use it
         if (stepOutput !== null && stepOutput !== undefined) {
           // Update step_run with output and status completed
+          currentOperation = 'MarkStepRunCompleted'
+          console.log('[WORKFLOW] operation: MarkStepRunCompleted')
           await graphqlRequest(`
             mutation UpdateStepRunCompleted($id: uuid!, $output: jsonb, $attempt_count: Int!) {
               update_step_runs_by_pk(pk_columns: { id: $id }, _set: { output: $output, status: "completed", attempt_count: $attempt_count }) {
@@ -562,6 +599,8 @@ export async function POST(request: NextRequest) {
           `, { id: stepRunId, output: stepOutput, attempt_count: attemptCount })
         } else {
           // If stepOutput is null, we still mark as completed (should not happen)
+          currentOperation = 'MarkStepRunCompleted'
+          console.log('[WORKFLOW] operation: MarkStepRunCompleted')
           await graphqlRequest(`
             mutation UpdateStepRunCompleted($id: uuid!, $attempt_count: Int!) {
               update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "completed", attempt_count: $attempt_count }) {
@@ -577,6 +616,8 @@ export async function POST(request: NextRequest) {
         // If step execution fails, update step_run to failed and break
         stepError = error instanceof Error ? error.message : String(error)
         attemptCount = (error as WorkflowExecutionError).attempts ?? attemptCount
+        currentOperation = 'MarkStepRunFailed'
+        console.log('[WORKFLOW] operation: MarkStepRunFailed')
         await graphqlRequest(`
           mutation UpdateStepRunFailed($id: uuid!, $message: String!, $attempt_count: Int!) {
             update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", error: $message, attempt_count: $attempt_count }) {
@@ -586,6 +627,8 @@ export async function POST(request: NextRequest) {
         `, { id: stepRunId, message: stepError, attempt_count: attemptCount })
 
         // Update workflow_run to failed
+        currentOperation = 'MarkWorkflowRunFailed'
+        console.log('[WORKFLOW] operation: MarkWorkflowRunFailed')
         await graphqlRequest(`
           mutation UpdateWorkflowRunFailed($id: uuid!) {
             update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: now() }) {
@@ -593,7 +636,7 @@ export async function POST(request: NextRequest) {
             }
           }
         `, { id: runId })
-        return NextResponse.json({ error: 'Workflow execution failed' }, { status: 500 })
+        throw error
       }
 
       // Move to the next step
@@ -601,6 +644,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 10. All steps succeeded: update workflow_run to completed and increment quota
+    currentOperation = 'MarkWorkflowRunCompleted'
+    console.log('[WORKFLOW] operation: MarkWorkflowRunCompleted')
     await graphqlRequest(`
       mutation UpdateWorkflowRunCompleted($id: uuid!) {
         update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "completed", completed_at: now() }) {
@@ -610,6 +655,8 @@ export async function POST(request: NextRequest) {
     `, { id: runId })
 
     // Increment quota_used by 1
+    currentOperation = 'IncrementQuota'
+    console.log('[WORKFLOW] operation: IncrementQuota')
     await graphqlRequest(`
       mutation IncrementQuota($id: uuid!) {
         update_organizations_by_pk(pk_columns: { id: $id }, _inc: { quota_used: 1 }) {
@@ -623,10 +670,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ run_id: runId, status: 'completed' })
   } catch (error: unknown) {
     const executionError = error as WorkflowExecutionError
-    console.error('Workflow execution failed', {
-      operation: executionError.operation ?? null,
-      message: executionError.message,
+    const safeOperationName = executionError.operation ?? currentOperation ?? 'unknown'
+
+    console.error('[WORKFLOW_EXECUTION_ERROR]', {
+      errorName: executionError.name,
+      errorMessage: executionError.message,
+      errorStack: executionError.stack,
+      operation: safeOperationName,
     })
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({
+      error: 'Workflow execution failed',
+      operation: safeOperationName,
+      details: error instanceof Error ? error.message : String(error),
+    }, { status: 500 })
   }
 }
