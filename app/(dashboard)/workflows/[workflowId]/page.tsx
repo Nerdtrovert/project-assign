@@ -39,7 +39,7 @@ function ensureMutationSucceeded(result: any, fallbackMessage: string) {
   }
 }
 
-const LIVE_RUN_STATUSES = new Set(['running', 'paused', 'waiting_for_approval'])
+const LIVE_RUN_STATUSES = new Set(['running', 'paused'])
 
 function normalizeStatus(status?: string | null): string {
   return (status || '').toLowerCase().replace(/\s+/g, '_')
@@ -115,9 +115,109 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
   const pollingRunIdRef = useRef<string | null>(null)
   const reexecuteLiveStatusRef = useRef(reexecuteLiveStatus)
 
+  // Get the data from the queries
+  const { data, fetching, error } = result
+  const workflow = data?.workflows_by_pk
+  const workflowRuns = liveWorkflowRuns.length > 0 ? liveWorkflowRuns : (workflow?.workflow_runs ?? [])
+  const latestRun = workflowRuns[0]
+  const activePollingRunId = latestRun && isLiveRunStatus(latestRun.status)
+    ? latestRun.id
+    : runId !== null && isLiveRunStatus(runStatus)
+      ? runId
+      : null
+  const isInitialLoading = fetching && !workflow
+  const members = data?.org_members || []
+  const orderedSteps = [...(workflow?.workflow_steps ?? [])].sort((a: any, b: any) => a.position - b.position)
+
+  // Resolve user role in this organization
+  const userOrgMember = workflow ? members.find((m: any) => m.org_id === workflow.org_id) : null
+  const userRole = userOrgMember?.role || 'viewer' // Fallback to viewer for safety
+  const orgName = userOrgMember?.organization?.name || workflow?.org_id || 'Unknown Organization'
+
+  const canEdit = userRole === 'owner' || userRole === 'editor'
+  const canDelete = userRole === 'owner' || userRole === 'editor'
+
+  // Set up polling interval for live status updates
   useEffect(() => {
-    reexecuteLiveStatusRef.current = reexecuteLiveStatus
-  }, [reexecuteLiveStatus])
+    // Clear any existing interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+
+    // Get the latest run from the best available source: live if available, otherwise main
+    const runs = liveWorkflowRuns.length > 0 ? liveWorkflowRuns : (data?.workflows_by_pk?.workflow_runs || []);
+    const latestRun = runs[0];
+
+    const shouldPoll = data?.workflows_by_pk && latestRun && isLiveRunStatus(latestRun.status);
+
+    if (shouldPoll) {
+      const interval = setInterval(() => {
+        reexecuteLiveStatusRef.current({ requestPolicy: 'network-only' });
+      }, 1500);
+
+      pollingIntervalRef.current = interval;
+    }
+
+    // Cleanup function
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [data, liveWorkflowRuns])
+
+  // Handle activePollingRunId changes (cleanup and immediate reexecute)
+  useEffect(() => {
+    if (!activePollingRunId) {
+      // No active run, clear interval and reset refs
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      pollingRunIdRef.current = null;
+      return;
+    }
+
+    // There is an active run. If the interval is not set for this run, we want to:
+    //   - Clear any existing interval (to avoid duplicates)
+    //   - Set the pollingRunIdRef to this run
+    //   - Do an immediate reexecute to get the latest status for this run
+    if (pollingIntervalRef.current && pollingRunIdRef.current === activePollingRunId) {
+      // The interval is already set for this run, do nothing
+      return;
+    }
+
+    // Clear any existing interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    // Set the pollingRunIdRef to the active run
+    pollingRunIdRef.current = activePollingRunId;
+
+    // Do an immediate reexecute for the live status
+    reexecuteLiveStatusRef.current({ requestPolicy: 'network-only' });
+  }, [activePollingRunId])
+
+  // Update liveWorkflowRuns from workflow?.workflow_runs (to keep in sync with the main query)
+  useEffect(() => {
+    if (workflow?.workflow_runs) {
+      setLiveWorkflowRuns((currentRuns) => {
+        const nextRuns = workflow.workflow_runs
+        return JSON.stringify(currentRuns) === JSON.stringify(nextRuns) ? currentRuns : nextRuns
+      })
+    }
+  }, [workflow?.workflow_runs])
+
+  // Initialize edit fields
+  useEffect(() => {
+    if (workflow) {
+      setEditName(workflow.name || '')
+      setEditDesc(workflow.description || '')
+    }
+  }, [workflow])
 
   const handleApproveRun = async (runId: string) => {
     setApprovingRunId(runId)
@@ -144,92 +244,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
     }
   }
 
-  const { data, fetching, error } = result
-  const workflow = data?.workflows_by_pk
-  const workflowRuns = liveWorkflowRuns.length > 0 ? liveWorkflowRuns : (workflow?.workflow_runs ?? [])
-  const latestRun = workflowRuns[0]
-  const activePollingRunId = latestRun && isLiveRunStatus(latestRun.status)
-    ? latestRun.id
-    : runId && isLiveRunStatus(runStatus)
-      ? runId
-      : null
-  const isInitialLoading = fetching && !workflow
-  const members = data?.org_members || []
-  const orderedSteps = [...(workflow?.workflow_steps ?? [])].sort((a: any, b: any) => a.position - b.position)
-
-  // Resolve user role in this organization
-  const userOrgMember = workflow ? members.find((m: any) => m.org_id === workflow.org_id) : null
-  const userRole = userOrgMember?.role || 'viewer' // Fallback to viewer for safety
-  const orgName = userOrgMember?.organization?.name || workflow?.org_id || 'Unknown Organization'
-
-  const canEdit = userRole === 'owner' || userRole === 'editor'
-  const canDelete = userRole === 'owner' || userRole === 'editor'
-
-  useEffect(() => {
-    if (workflow?.workflow_runs) {
-      setLiveWorkflowRuns((currentRuns) => {
-        const nextRuns = workflow.workflow_runs
-        return JSON.stringify(currentRuns) === JSON.stringify(nextRuns) ? currentRuns : nextRuns
-      })
-    }
-  }, [workflow?.workflow_runs])
-
-  useEffect(() => {
-    const latestLiveRun = liveStatusResult.data?.workflow_runs?.[0]
-    if (!latestLiveRun) return
-
-    setLiveWorkflowRuns((currentRuns) => mergeLatestRun(currentRuns, latestLiveRun))
-
-    if (runId === latestLiveRun.id && runStatus !== latestLiveRun.status) {
-      setRunStatus(latestLiveRun.status)
-    }
-  }, [liveStatusResult.data, runId, runStatus])
-
-  useEffect(() => {
-    if (!activePollingRunId) {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current)
-        pollingIntervalRef.current = null
-        pollingRunIdRef.current = null
-      }
-      return
-    }
-
-    if (pollingIntervalRef.current && pollingRunIdRef.current === activePollingRunId) {
-      return
-    }
-
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current)
-    }
-
-    pollingRunIdRef.current = activePollingRunId
-    reexecuteLiveStatusRef.current({ requestPolicy: 'network-only' })
-
-    const interval = setInterval(() => {
-      reexecuteLiveStatusRef.current({ requestPolicy: 'network-only' })
-    }, 1500)
-
-    pollingIntervalRef.current = interval
-
-    return () => {
-      if (pollingIntervalRef.current === interval) {
-        clearInterval(interval)
-        pollingIntervalRef.current = null
-        pollingRunIdRef.current = null
-      }
-    }
-  }, [activePollingRunId])
-
-  // Initialize edit fields
-  useEffect(() => {
-    if (workflow) {
-      setEditName(workflow.name || '')
-      setEditDesc(workflow.description || '')
-    }
-  }, [workflow])
-
-  const handleUpdate = async (e: React.FormEvent) => {
+  const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!canEdit) return
 
@@ -301,7 +316,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
     }
   }
 
-  const handleStepFormSubmit = async (e: React.FormEvent) => {
+  const handleStepFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!canEdit) return
 
