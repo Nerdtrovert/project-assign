@@ -32,14 +32,8 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   }
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#12131a]">
-        <div className="text-center space-y-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-zinc-600 mx-auto"></div>
-          <p className="text-zinc-400 text-xs font-medium">Restoring session...</p>
-        </div>
-      </div>
-    )
+    // Silent dark background to prevent flashing loaders during session checks
+    return <div className="min-h-screen bg-[#0e0f14]" />
   }
 
   if (!isAuthenticated) {
@@ -75,14 +69,8 @@ export function GuestGuard({ children }: { children: ReactNode }) {
   }
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#12131a]">
-        <div className="text-center space-y-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-zinc-600 mx-auto"></div>
-          <p className="text-zinc-400 text-xs font-medium">Loading...</p>
-        </div>
-      </div>
-    )
+    // Silent dark background to prevent flashing loaders during session checks
+    return <div className="min-h-screen bg-[#0e0f14]" />
   }
 
   if (isAuthenticated) {

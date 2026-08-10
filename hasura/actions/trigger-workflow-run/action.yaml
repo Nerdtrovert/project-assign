@@ -3,6 +3,8 @@ definition:
   arguments:
   - name: workflow_id
     type: uuid!
+  - name: customer_message
+    type: String
   output:
     kind: object
     fields:

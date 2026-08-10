@@ -20,7 +20,7 @@ import { DeleteWorkflowMutation, UpdateWorkflowMutation } from '@/graphql/mutati
 type StepType = 'llm_call' | 'http_request' | 'db_write' | 'notify' | 'conditional_branch' | 'approval_gate'
 
 const DEFAULT_STEP_CONFIG: Record<StepType, any> = {
-  llm_call: { model: 'llama3-8b-8192', prompt: '' },
+  llm_call: { model: 'llama-3.1-8b-instant', prompt: '' },
   http_request: { method: 'GET', url: '', headers: {}, body: '' },
   db_write: { target: '', data: {} },
   notify: { channel: 'email', message: '' },
@@ -63,6 +63,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
   const [isRunningWorkflow, setIsRunningWorkflow] = useState(false)
   const [runId, setRunId] = useState<string | null>(null)
   const [runStatus, setRunStatus] = useState<string | null>(null)
+  const [customerMessage, setCustomerMessage] = useState("URGENT: My payment was deducted twice and I need this fixed immediately.")
 
   // Recent runs collapse/expand states
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null)
@@ -273,7 +274,10 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
     setRunStatus(null)
 
     try {
-      const res = await triggerWorkflowRun({ workflow_id: workflowId })
+      const res = await triggerWorkflowRun({ 
+        workflow_id: workflowId,
+        customer_message: customerMessage 
+      })
 
       if (res.error) {
         throw new Error(res.error.message || 'Failed to trigger workflow')
@@ -329,10 +333,10 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
 
       {/* Main Detail view */}
       {!fetching && !error && workflow && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full min-w-0">
           
           {/* Main Info Box */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6 min-w-0">
             <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-6 space-y-4">
               {isEditing ? (
                 /* Edit Form */
@@ -452,86 +456,133 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                   No steps defined. Add a step to begin configuring the agent pipeline.
                 </div>
               ) : (
-                <div className="space-y-3 relative before:absolute before:left-[15px] before:top-4 before:bottom-4 before:w-[1px] before:bg-zinc-800">
+                <div className="space-y-4">
                   {orderedSteps.map((step: any, idx: number) => {
                     const info = nodeTypeInfo[step.type] || { icon: 'STEP', label: step.type, color: 'border-zinc-800 bg-[#0e0e11] text-zinc-300' }
                     const stepNum = String(idx + 1).padStart(2, '0')
                     
                     return (
-                      <div key={step.id} className="flex items-start space-x-3 relative group">
-                        
-                        {/* Timeline Connector & Up/Down Actions */}
-                        <div className="flex flex-col items-center shrink-0">
-                          <div className={`w-8 h-8 rounded-md border flex items-center justify-center text-[10px] font-bold z-10 shrink-0 ${info.color}`}>
-                            {info.icon}
-                          </div>
-                          
-                          {/* Reordering indicators for editors */}
-                          {canEdit && (
-                            <div className="flex items-center space-x-[2px] mt-1 z-20">
-                              <button
-                                onClick={() => handleMoveStepUp(step, orderedSteps)}
-                                disabled={idx === 0}
-                                title="Move Step Up"
-                                className="p-0.5 rounded bg-zinc-900 border border-zinc-850 text-[8px] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 cursor-pointer"
-                              >
-                                ▲
-                              </button>
-                              <button
-                                onClick={() => handleMoveStepDown(step, orderedSteps)}
-                                disabled={idx === orderedSteps.length - 1}
-                                title="Move Step Down"
-                                className="p-0.5 rounded bg-zinc-900 border border-zinc-850 text-[8px] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 cursor-pointer"
-                              >
-                                ▼
-                              </button>
+                      <div key={step.id} className="bg-[#111115] border border-zinc-800 rounded-lg p-5 space-y-4 transition-all duration-150">
+                        <div className="flex items-start justify-between gap-4">
+                          {/* Left icon and details */}
+                          <div className="flex items-start space-x-3.5 min-w-0">
+                            {/* Step index badge */}
+                            <div className="flex items-center justify-center w-8 h-8 rounded bg-zinc-900 border border-zinc-800 text-xs font-mono font-bold text-zinc-400 shrink-0">
+                              {stepNum}
                             </div>
-                          )}
-                        </div>
-
-                        {/* Step block */}
-                        <div className="flex-1 bg-[#0e0e11]/40 border border-zinc-800 rounded-md p-4 space-y-3">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <span className="text-xs font-mono font-bold text-zinc-500">{stepNum}</span>
-                                <h4 className="text-xs font-semibold text-zinc-100">{step.name}</h4>
+                            
+                            {/* Step metadata */}
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="text-xs font-semibold text-zinc-100 truncate">{step.name}</h4>
+                                <span className={`text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border font-semibold ${
+                                  step.type === 'llm_call' ? 'bg-violet-950/20 border-violet-850/50 text-violet-400' :
+                                  step.type === 'http_request' ? 'bg-blue-950/20 border-blue-850/50 text-blue-400' :
+                                  step.type === 'conditional_branch' ? 'bg-amber-950/20 border-amber-850/50 text-amber-400' :
+                                  'bg-zinc-900 border-zinc-800 text-zinc-400'
+                                }`}>
+                                  {info.label}
+                                </span>
                               </div>
-                              <p className="text-[9px] text-zinc-500 font-semibold uppercase tracking-wider mt-0.5">{info.label}</p>
+                              
+                              {/* Step configuration description */}
+                              <div className="mt-2 text-xs text-zinc-400 space-y-1">
+                                {step.type === 'llm_call' && (
+                                  <>
+                                    <div>
+                                      <span className="text-zinc-500 font-medium">Model:</span>{' '}
+                                      <span className="font-mono text-[10px] text-zinc-350 bg-zinc-900 px-1 py-0.2 rounded border border-zinc-850">{step.config?.model || 'llama-3.1-8b-instant'}</span>
+                                    </div>
+                                    <div className="line-clamp-2 text-zinc-405 leading-normal mt-1">
+                                      <span className="text-zinc-500 font-medium">Prompt:</span> {step.config?.prompt}
+                                    </div>
+                                  </>
+                                )}
+                                {step.type === 'http_request' && (
+                                  <>
+                                    <div className="flex items-center space-x-1.5">
+                                      <span className="text-zinc-500 font-medium">Request:</span>
+                                      <span className="font-bold text-[9px] text-emerald-400 uppercase bg-emerald-950/20 border border-emerald-900/30 px-1 rounded">{step.config?.method || 'GET'}</span>
+                                      <span className="font-mono text-[10px] text-zinc-350 truncate max-w-sm block" title={step.config?.url}>{step.config?.url}</span>
+                                    </div>
+                                  </>
+                                )}
+                                {step.type === 'conditional_branch' && (
+                                  <>
+                                    <div>
+                                      <span className="text-zinc-500 font-medium">Condition:</span>{' '}
+                                      <span className="font-mono text-zinc-300 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-850 text-[10px]">{step.config?.condition}</span>
+                                    </div>
+                                    <div className="text-[10px] text-zinc-550 mt-1 font-medium italic">
+                                      {step.config?.skipOnFalse ? 'FALSE → skip downstream steps' : 'TRUE → skip downstream steps'}
+                                    </div>
+                                  </>
+                                )}
+                                {['db_write', 'notify', 'approval_gate'].includes(step.type) && (
+                                  <div className="text-zinc-550 italic text-[10px]">Configuration saved (Integration Stub)</div>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex items-center space-x-2">
-                              <span className="text-[9px] font-mono text-zinc-500 bg-zinc-900 border border-zinc-850 px-1.5 py-0.2 rounded">
-                                Pos: {step.position}
-                              </span>
-                              {canEdit && (
-                                <div className="flex items-center space-x-1">
+                          </div>
+
+                          {/* Right Controls */}
+                          <div className="flex items-center space-x-2 shrink-0">
+                            {canEdit && (
+                              <>
+                                {/* Move up/down buttons */}
+                                <div className="flex items-center space-x-1 bg-zinc-900/60 p-0.5 rounded border border-zinc-800">
                                   <button
-                                    onClick={() => handleEditStepClick(step)}
-                                    title="Edit Config"
-                                    className="p-1 rounded text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
+                                    onClick={() => handleMoveStepUp(step, orderedSteps)}
+                                    disabled={idx === 0}
+                                    aria-label="Move Step Up"
+                                    title="Move Step Up"
+                                    className="px-1.5 py-0.5 rounded text-[9px] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 transition-opacity cursor-pointer font-bold"
                                   >
-                                    ✏️
+                                    [ ↑ ]
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteStep(step.id)}
-                                    title="Delete Step"
-                                    className="p-1 rounded text-rose-500 hover:text-rose-400 transition-colors cursor-pointer"
+                                    onClick={() => handleMoveStepDown(step, orderedSteps)}
+                                    disabled={idx === orderedSteps.length - 1}
+                                    aria-label="Move Step Down"
+                                    title="Move Step Down"
+                                    className="px-1.5 py-0.5 rounded text-[9px] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 transition-opacity cursor-pointer font-bold"
                                   >
-                                    🗑️
+                                    [ ↓ ]
                                   </button>
                                 </div>
-                              )}
-                            </div>
+                                
+                                <button
+                                  onClick={() => handleEditStepClick(step)}
+                                  aria-label="Edit Config"
+                                  className="text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer font-medium py-1 px-2 rounded border border-zinc-800 hover:bg-zinc-800 bg-zinc-900/40"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteStep(step.id)}
+                                  aria-label="Delete Step"
+                                  className="text-xs text-rose-500 hover:text-rose-400 cursor-pointer font-medium py-1 px-2 rounded border border-rose-950/20 hover:bg-rose-950/25 bg-rose-950/10"
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
                           </div>
+                        </div>
 
-                          {step.config && Object.keys(step.config).length > 0 && (
-                            <div className="bg-[#0e0e11] border border-zinc-850 rounded p-2.5 overflow-x-auto">
+                        {/* Collapsible raw JSON configuration display */}
+                        {step.config && Object.keys(step.config).length > 0 && (
+                          <details className="group border-t border-zinc-850/60 pt-3">
+                            <summary className="text-[9px] text-zinc-500 font-semibold cursor-pointer select-none hover:text-zinc-300 transition-colors uppercase tracking-wider outline-none">
+                              Raw JSON Configuration
+                            </summary>
+                            <div className="mt-2 bg-zinc-950/60 border border-zinc-900 rounded-md p-3 overflow-x-auto max-h-48">
                               <pre className="text-[10px] font-mono text-zinc-400 select-all leading-relaxed">
                                 {JSON.stringify(step.config, null, 2)}
                               </pre>
                             </div>
-                          )}
-                        </div>
+                          </details>
+                        )}
                       </div>
                     )
                   })}
@@ -678,7 +729,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
           </div>
 
           {/* Sidebar / Triggers & Actions */}
-          <div className="space-y-6">
+          <div className="space-y-6 min-w-0">
             
             {/* User Access Rights */}
             <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-5 space-y-3">
@@ -696,6 +747,20 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
               <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-5 space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Manual Execution</h3>
                 
+                {/* Customer Message input area for Demo */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                    Customer Message
+                  </label>
+                  <textarea
+                    value={customerMessage}
+                    onChange={(e) => setCustomerMessage(e.target.value)}
+                    rows={3}
+                    placeholder="Enter support message..."
+                    className="w-full px-2.5 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded text-xs text-zinc-300 focus:outline-none focus:border-zinc-700 resize-none font-medium leading-relaxed"
+                  />
+                </div>
+
                 {isRunningWorkflow ? (
                   <div className="flex items-center space-x-2 py-1.5">
                     <div className="animate-spin rounded-full h-3.5 w-3.5 border-t-2 border-b-2 border-zinc-500"></div>
@@ -820,6 +885,8 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                   onConfigChange={(newConfig) => {
                     setStepConfigStr(JSON.stringify(newConfig, null, 2))
                   }}
+                  steps={orderedSteps}
+                  currentStepId={editingStepId}
                 />
               </div>
 

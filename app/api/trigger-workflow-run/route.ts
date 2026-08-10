@@ -37,6 +37,7 @@ if (!NHOST_BACKEND_URL) {
 type WorkflowExecutionError = Error & {
   attempts?: number
   operation?: string
+  retryable?: boolean
 }
 
 const createExecutionError = (message: string, retryable: boolean): WorkflowExecutionError => {
@@ -51,95 +52,156 @@ const graphqlRequest = async (query: string, variables: Record<string, unknown> 
 
   console.log(`[GRAPHQL-REQUEST] Starting: ${opName}`)
 
-  try {
-    const response = await fetch(NHOST_GRAPHQL_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-hasura-admin-secret': NHOST_ADMIN_SECRET || '',
-      },
-      body: JSON.stringify({ query, variables }),
-    })
-
-    console.log(`[GRAPHQL-RESPONSE] ${opName} HTTP Status: ${response.status} ${response.statusText}`)
-
-    if (!response.ok) {
-      console.error('[WORKFLOW-GRAPHQL-ERROR]', {
-        operation: opName,
-        httpStatus: response.status,
-        message: response.statusText,
+  let lastError: Error | null = null
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(NHOST_GRAPHQL_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-hasura-admin-secret': NHOST_ADMIN_SECRET || '',
+        },
+        body: JSON.stringify({ query, variables }),
       })
-      const err = new Error(`HTTP ${response.status}: ${response.statusText}`) as WorkflowExecutionError
-      err.operation = opName
-      throw err
-    }
 
-    const json = await response.json()
-    const hasErrors = !!json.errors
-    const hasData = !!json.data
+      console.log(`[GRAPHQL-RESPONSE] ${opName} HTTP Status: ${response.status} ${response.statusText}`)
 
-    console.log(`[GRAPHQL-RESPONSE] ${opName} hasData: ${hasData}, hasErrors: ${hasErrors}`)
-
-    if (json.errors) {
-      json.errors.forEach((graphqlError: { message: string; path?: unknown; extensions?: { code?: string } }) => {
+      if (!response.ok) {
         console.error('[WORKFLOW-GRAPHQL-ERROR]', {
           operation: opName,
-          message: graphqlError.message,
-          path: graphqlError.path ?? null,
-          code: graphqlError.extensions?.code ?? null,
+          httpStatus: response.status,
+          message: response.statusText,
         })
-      })
-      const err = new Error(
-        `GraphQL ${opName} failed: ${json.errors.map((graphqlError: { message: string }) => graphqlError.message).join('; ')}`
-      ) as WorkflowExecutionError
-      err.operation = opName
-      throw err
-    }
+        const err = new Error(`HTTP ${response.status}: ${response.statusText}`) as WorkflowExecutionError
+        err.operation = opName
+        throw err
+      }
 
-    return json.data
-  } catch (err: unknown) {
-    const operationError = err as WorkflowExecutionError
-    console.error(`[GRAPHQL-ERROR] ${opName} failed: ${operationError.name} - ${operationError.message}`)
-    if (!operationError.operation) {
-      operationError.operation = opName
+      const json = await response.json()
+      const hasErrors = !!json.errors
+      const hasData = !!json.data
+
+      console.log(`[GRAPHQL-RESPONSE] ${opName} hasData: ${hasData}, hasErrors: ${hasErrors}`)
+
+      if (json.errors) {
+        json.errors.forEach((graphqlError: { message: string; path?: unknown; extensions?: { code?: string } }) => {
+          console.error('[WORKFLOW-GRAPHQL-ERROR]', {
+            operation: opName,
+            message: graphqlError.message,
+            path: graphqlError.path ?? null,
+            code: graphqlError.extensions?.code ?? null,
+          })
+        })
+        const err = new Error(
+          `GraphQL ${opName} failed: ${json.errors.map((graphqlError: { message: string }) => graphqlError.message).join('; ')}`
+        ) as WorkflowExecutionError
+        err.operation = opName
+        throw err
+      }
+
+      return json.data
+    } catch (err: any) {
+      console.warn(`[GRAPHQL-WARNING] Attempt ${attempt} failed for ${opName}: ${err.message}`)
+      lastError = err
+      if (attempt < 3) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
     }
-    throw operationError
   }
+
+  const operationError = lastError as WorkflowExecutionError
+  if (operationError && !operationError.operation) {
+    operationError.operation = opName
+  }
+  throw operationError || new Error(`GraphQL operation ${opName} failed after 3 attempts`)
 }
 
 // Helper function to make an HTTP request with retry logic
 const httpRequestWithRetry = async (
   url: string,
   options: RequestInit = {},
-  maxAttempts = 2
-): Promise<{ response: Response; attempts: number }> => {
+  maxAttempts = 2,
+  stepId?: string
+): Promise<{ response: Response; bodyText: string; attempts: number }> => {
+  const startTime = Date.now()
+  const timeoutValue = 10000
+  const method = options.method || 'GET'
+
+  if (stepId) {
+    console.log(`[HTTP_STEP_START] Step: ${stepId} | URL: ${url} | Method: ${method} | Timeout: ${timeoutValue}ms`)
+  }
+
   let lastError: WorkflowExecutionError | undefined
+  
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const attemptStartTime = Date.now()
+    const controller = new AbortController()
+    const signal = controller.signal
+    const timeoutId = setTimeout(() => controller.abort(), timeoutValue)
+
+    if (stepId) {
+      console.log(`[HTTP_ATTEMPT] Step: ${stepId} | Attempt: ${attempt}/${maxAttempts} | Started`)
+    }
+
     try {
       const response = await fetch(url, {
         ...options,
-        // Timeout after 10 seconds
-        signal: AbortSignal.timeout(10000),
+        signal,
       })
 
-      // Retry on 5xx errors
-      if (response.status >= 500 && response.status < 600) {
+      // Read response body text under the protection of the active abort signal
+      const bodyText = await response.text()
+      clearTimeout(timeoutId)
+
+      const elapsed = Date.now() - attemptStartTime
+      if (stepId) {
+        console.log(`[HTTP_RESPONSE] Step: ${stepId} | Attempt: ${attempt}/${maxAttempts} | Status: ${response.status} | Time: ${elapsed}ms`)
+      }
+
+      const isError5xx = response.status >= 500 && response.status < 600
+      const isError4xx = response.status >= 400 && response.status < 500
+
+      if (isError5xx) {
+        const willRetry = attempt < maxAttempts
+        if (stepId && willRetry) {
+          console.log(`[HTTP_RETRY] Step: ${stepId} | Attempt: ${attempt}/${maxAttempts} | Retrying 5xx status: ${response.status}`)
+        }
         throw createExecutionError(`HTTP ${response.status}: ${response.statusText}`, true)
       }
 
-      // For 4xx errors, we don't retry (except maybe 429, but we keep it simple)
-      if (response.status >= 400 && response.status < 500) {
+      if (isError4xx) {
         throw createExecutionError(`HTTP ${response.status}: ${response.statusText}`, false)
       }
 
-      return { response, attempts: attempt }
+      return { response, bodyText, attempts: attempt }
     } catch (error: unknown) {
-      const executionError = error as WorkflowExecutionError & { retryable?: boolean }
+      clearTimeout(timeoutId)
+      const elapsed = Date.now() - attemptStartTime
+
+      let executionError: WorkflowExecutionError
+      if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))) {
+        executionError = createExecutionError('Request timed out', true)
+      } else {
+        executionError = error instanceof Error ? (error as WorkflowExecutionError) : createExecutionError(String(error), true)
+      }
+
       executionError.attempts = attempt
       lastError = executionError
+      
+      const willRetry = executionError.retryable !== false && attempt < maxAttempts
+
+      if (stepId) {
+        if (willRetry) {
+          console.log(`[HTTP_RETRY] Step: ${stepId} | Attempt: ${attempt}/${maxAttempts} | Error: ${executionError.message} | Retrying: true`)
+        } else {
+          console.log(`[HTTP_STEP_ERROR] Step: ${stepId} | Attempt: ${attempt}/${maxAttempts} | Error: ${executionError.message} | Time: ${elapsed}ms | Retrying: false`)
+        }
+      }
+
       if (executionError.retryable === false || attempt === maxAttempts) {
         throw executionError
       }
+
       // Wait for a short delay before retrying (e.g., 500ms)
       await new Promise(resolve => setTimeout(resolve, 500))
     }
@@ -153,6 +215,10 @@ const llmCallWithRetry = async (
   prompt: string,
   maxAttempts = 2
 ): Promise<{ output: string; attempts: number }> => {
+  if (!GROQ_API_KEY) {
+    throw createExecutionError('GROQ_API_KEY is not configured', false)
+  }
+
   let lastError: WorkflowExecutionError | undefined
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -171,6 +237,12 @@ const llmCallWithRetry = async (
       })
 
       if (!response.ok) {
+        console.error('[WORKFLOW-GROQ-ERROR]', {
+          model,
+          attempt,
+          httpStatus: response.status,
+          message: response.statusText,
+        })
         // Retry on 5xx errors
         if (response.status >= 500 && response.status < 600) {
           throw createExecutionError(`HTTP ${response.status}: ${response.statusText}`, true)
@@ -200,12 +272,28 @@ const evaluateCondition = (condition: any, previousOutput: any) => {
   // If previousOutput is a string, try to parse it as JSON
   let parsedOutput: any = previousOutput
   if (typeof previousOutput === 'string') {
+    const cleanText = previousOutput.replace(/```json/gi, '').replace(/```/g, '').trim()
     try {
-      parsedOutput = JSON.parse(previousOutput)
+      parsedOutput = JSON.parse(cleanText)
     } catch (e) {
-      // If parsing fails, we treat it as a string
-      parsedOutput = previousOutput
+      // If parsing fails, we treat the clean string as output
+      parsedOutput = cleanText
     }
+  }
+
+  if (typeof condition === 'string') {
+    const match = condition.trim().match(/^previous\.output(?:\.classification)?\s*(?:==|===)\s*["']?([^"'\s]+)["']?$/)
+    if (!match) {
+      return false
+    }
+
+    const [, expectedValue] = match
+    const classification =
+      parsedOutput && typeof parsedOutput === 'object' && 'classification' in parsedOutput
+        ? parsedOutput.classification
+        : parsedOutput
+
+    return typeof classification === 'string' && classification.trim().toLowerCase() === expectedValue.toLowerCase()
   }
 
   // Handle condition format: { field: string, operator: string, value: any }
@@ -259,6 +347,7 @@ const evaluateCondition = (condition: any, previousOutput: any) => {
 
 export async function POST(request: NextRequest) {
   let currentOperation: string | undefined
+  let runId: string | null = null
 
   try {
     console.log('[WORKFLOW] triggerWorkflowRun handler reached')
@@ -287,6 +376,8 @@ export async function POST(request: NextRequest) {
     if (!workflow_id) {
       return NextResponse.json({ error: 'Missing workflow_id in Hasura Action input' }, { status: 400 })
     }
+
+    const customer_message = body?.input?.customer_message || null
 
     const userId = body?.session_variables?.['x-hasura-user-id']
 
@@ -365,12 +456,13 @@ export async function POST(request: NextRequest) {
     currentOperation = 'CreateWorkflowRun'
     console.log('[WORKFLOW] operation: CreateWorkflowRun')
     const runData = await graphqlRequest(`
-      mutation CreateWorkflowRun($workflow_id: uuid!, $created_by: uuid!, $started_at: timestamptz!) {
+      mutation CreateWorkflowRun($workflow_id: uuid!, $created_by: uuid!, $started_at: timestamptz!, $trigger_type: String!) {
         insert_workflow_runs_one(object: {
           workflow_id: $workflow_id
           status: "running"
           created_by: $created_by
           started_at: $started_at
+          trigger_type: $trigger_type
         }) {
           id
           status
@@ -381,6 +473,7 @@ export async function POST(request: NextRequest) {
       workflow_id,
       created_by: userId,
       started_at: new Date().toISOString(),
+      trigger_type: 'manual',
     })
 
     if (!runData?.insert_workflow_runs_one) {
@@ -388,7 +481,7 @@ export async function POST(request: NextRequest) {
     }
 
     const workflowRun = runData.insert_workflow_runs_one
-    const runId = workflowRun.id
+    runId = workflowRun.id
 
     // 5. Load workflow steps in position order
     currentOperation = 'LoadWorkflowSteps'
@@ -405,8 +498,8 @@ export async function POST(request: NextRequest) {
 
     const steps = stepsData?.workflow_steps || []
 
-    // 6. Initialize previous output as null
-    let previousOutput = null
+    // 6. Initialize previous output with customer message if provided
+    let previousOutput = customer_message
 
     // 7. Process each step
     let currentStepIndex = 0
@@ -505,14 +598,16 @@ export async function POST(request: NextRequest) {
         // 8. Execute the step based on type
         switch (stepType) {
           case 'llm_call': {
-            const { model = 'llama3-8b-8192', prompt } = stepConfig
+            const { model = 'llama-3.1-8b-instant', prompt } = stepConfig
             if (!prompt) {
               throw new Error('LLM call step missing prompt in config')
             }
             // Interpolate previous output into the prompt if needed
             const interpolatedPrompt = prompt.replace(
               /\{\{previous_output\}\}/g,
-              previousOutput !== null ? JSON.stringify(previousOutput) : ''
+              previousOutput !== null
+                ? (typeof previousOutput === 'string' ? previousOutput : JSON.stringify(previousOutput))
+                : ''
             )
             const result = await llmCallWithRetry(model, interpolatedPrompt)
             stepOutput = result.output
@@ -537,21 +632,23 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            const result = await httpRequestWithRetry(interpolatedUrl, {
+            const fetchOptions: RequestInit = {
               method,
               headers: typeof headers === 'object' ? headers : JSON.parse(headers),
-              body: body !== undefined ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
-            })
-            const response = result.response
+            }
+            if (method !== 'GET' && method !== 'HEAD' && body !== undefined && body !== null && body !== '') {
+              fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body)
+            }
+
+            const result = await httpRequestWithRetry(interpolatedUrl, fetchOptions, 2, step.id)
             attemptCount = result.attempts
 
             // Store response status, body, and headers in step output
-            const responseBody = await response.text()
             stepOutput = {
-              status: response.status,
-              statusText: response.statusText,
-              headers: Object.fromEntries(response.headers.entries()),
-              body: responseBody,
+              status: result.response.status,
+              statusText: result.response.statusText,
+              headers: Object.fromEntries(result.response.headers.entries()),
+              body: result.bodyText,
             }
             break
           }
@@ -617,30 +714,57 @@ export async function POST(request: NextRequest) {
         // Set previous output for the next step
         previousOutput = stepOutput
       } catch (error) {
-        // If step execution fails, update step_run to failed and break
-        stepError = error instanceof Error ? error.message : String(error)
+        // If step execution fails, update step_run to failed
+        const originalError = error instanceof Error ? error : new Error(String(error))
+        stepError = originalError.message
         attemptCount = (error as WorkflowExecutionError).attempts ?? attemptCount
-        currentOperation = 'MarkStepRunFailed'
-        console.log('[WORKFLOW] operation: MarkStepRunFailed')
-        await graphqlRequest(`
-          mutation UpdateStepRunFailed($id: uuid!, $message: String!, $attempt_count: Int!) {
-            update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", error: $message, attempt_count: $attempt_count }) {
-              id
-            }
-          }
-        `, { id: stepRunId, message: stepError, attempt_count: attemptCount })
 
-        // Update workflow_run to failed
-        currentOperation = 'MarkWorkflowRunFailed'
-        console.log('[WORKFLOW] operation: MarkWorkflowRunFailed')
-        await graphqlRequest(`
-          mutation UpdateWorkflowRunFailed($id: uuid!, $completed_at: timestamptz!) {
-            update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: $completed_at }) {
-              id
+        // 1. Mark Step Run as Failed
+        try {
+          currentOperation = 'MarkStepRunFailed'
+          console.log('[WORKFLOW] operation: MarkStepRunFailed')
+          await graphqlRequest(`
+            mutation UpdateStepRunFailed($id: uuid!, $message: String!, $attempt_count: Int!) {
+              update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", error: $message, attempt_count: $attempt_count }) {
+                id
+              }
             }
+          `, { id: stepRunId, message: stepError, attempt_count: attemptCount })
+        } catch (stepRunFailedErr) {
+          console.error('[WORKFLOW] Failed to mark step run as failed:', stepRunFailedErr)
+        }
+
+        // 2. Mark Workflow Run as Failed
+        let markWorkflowFailedError = null
+        if (runId) {
+          try {
+            currentOperation = 'MarkWorkflowRunFailed'
+            console.log('[WORKFLOW] operation: MarkWorkflowRunFailed')
+            await graphqlRequest(`
+              mutation UpdateWorkflowRunFailed($id: uuid!, $completed_at: timestamptz!) {
+                update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: $completed_at }) {
+                  id
+                }
+              }
+            `, { id: runId, completed_at: new Date().toISOString() })
+          } catch (wfFailedErr: any) {
+            console.error('[WORKFLOW] Failed to mark workflow run as failed:', wfFailedErr)
+            markWorkflowFailedError = wfFailedErr
           }
-        `, { id: runId, completed_at: new Date().toISOString() })
-        throw error
+        }
+
+        // 3. Construct aggregated error object to prevent masking the original error
+        const finalError = new Error(originalError.message) as WorkflowExecutionError
+        finalError.stack = originalError.stack
+        if (markWorkflowFailedError) {
+          finalError.operation = 'MarkWorkflowRunFailed'
+          finalError.message = `Step execution failed: [${originalError.message}]. Additionally, database update failed: [${markWorkflowFailedError.message}]`
+        } else {
+          finalError.operation = 'ExecuteStep'
+          finalError.message = originalError.message
+        }
+        
+        throw finalError
       }
 
       // Move to the next step
@@ -682,6 +806,23 @@ export async function POST(request: NextRequest) {
       errorStack: executionError.stack,
       operation: safeOperationName,
     })
+
+    // If runId exists, try to mark the workflow run as failed
+    if (runId) {
+      try {
+        console.log('[WORKFLOW] Outer catch: marking workflow run failed in db')
+        await graphqlRequest(`
+          mutation UpdateWorkflowRunFailed($id: uuid!, $completed_at: timestamptz!) {
+            update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: $completed_at }) {
+              id
+            }
+          }
+        `, { id: runId, completed_at: new Date().toISOString() })
+      } catch (dbErr) {
+        console.error('[WORKFLOW] Outer catch: failed to mark workflow run as failed in db:', dbErr)
+      }
+    }
+
     return NextResponse.json({
       error: 'Workflow execution failed',
       operation: safeOperationName,

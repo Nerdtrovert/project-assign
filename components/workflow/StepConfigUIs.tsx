@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 type StepConfigProps = {
   stepType: string
@@ -27,7 +27,7 @@ export function LLMCallConfig({ config, onConfigChange }: { config: any; onConfi
           value={model}
           onChange={(e) => setModel(e.target.value)}
           className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
-          placeholder="e.g., llama3-8b-8192"
+          placeholder="e.g., llama-3.1-8b-instant"
           onBlur={handleChange}
           onKeyPress={(e) => e.key === 'Enter' && handleChange()}
         />
@@ -239,14 +239,75 @@ export function NotifyConfig({ config, onConfigChange }: { config: any; onConfig
   )
 }
 
-export function ConditionalBranchConfig({ config, onConfigChange }: { config: any; onConfigChange: (config: any) => void }) {
+export function ConditionalBranchConfig({
+  config,
+  onConfigChange,
+  steps = [],
+  currentStepId,
+}: {
+  config: any
+  onConfigChange: (config: any) => void
+  steps?: any[]
+  currentStepId?: string | null
+}) {
   const [condition, setCondition] = useState(config?.condition || '')
-  const [truePath, setTruePath] = useState(config?.truePath || '')
-  const [falsePath, setFalsePath] = useState(config?.falsePath || '')
+  
+  // Filter out the conditional step itself from targets
+  const validTargets = steps.filter(s => s.id !== currentStepId)
 
-  const handleChange = () => {
-    onConfigChange({ condition, truePath, falsePath })
+  // Validate stored paths: must be "", "end", or a valid step ID in steps
+  const validatePath = (path: string) => {
+    if (path === '' || path === 'end') return path
+    if (validTargets.some(s => s.id === path)) return path
+    return '' // fallback/reset to default
   }
+
+  const [truePath, setTruePath] = useState(validatePath(config?.truePath || ''))
+  const [falsePath, setFalsePath] = useState(validatePath(config?.falsePath || ''))
+
+  // Find immediate next step to calculate jump/skip flags
+  const currentIdx = steps.findIndex(s => s.id === currentStepId)
+  const nextStep = currentIdx !== -1 && currentIdx + 1 < steps.length ? steps[currentIdx + 1] : null
+
+  const getSkipFlag = (pathValue: string) => {
+    if (pathValue === '') return false // continue sequentially
+    if (pathValue === 'end') return true // terminate workflow
+    if (nextStep && pathValue === nextStep.id) return false // immediate next step
+    return true // skip to non-sequential step
+  }
+
+  const handleChange = (newCond: string, newTrue: string, newFalse: string) => {
+    const validatedTrue = validatePath(newTrue)
+    const validatedFalse = validatePath(newFalse)
+    
+    setTruePath(validatedTrue)
+    setFalsePath(validatedFalse)
+    setCondition(newCond)
+
+    onConfigChange({
+      condition: newCond,
+      truePath: validatedTrue,
+      falsePath: validatedFalse,
+      skipOnTrue: getSkipFlag(validatedTrue),
+      skipOnFalse: getSkipFlag(validatedFalse),
+    })
+  }
+
+  // Auto-sync config on mount/prop change to ensure consistency
+  useEffect(() => {
+    const validatedTrue = validatePath(config?.truePath || '')
+    const validatedFalse = validatePath(config?.falsePath || '')
+    
+    if (validatedTrue !== config?.truePath || validatedFalse !== config?.falsePath) {
+      onConfigChange({
+        condition,
+        truePath: validatedTrue,
+        falsePath: validatedFalse,
+        skipOnTrue: getSkipFlag(validatedTrue),
+        skipOnFalse: getSkipFlag(validatedFalse),
+      })
+    }
+  }, [steps, currentStepId])
 
   return (
     <div className="space-y-3">
@@ -257,43 +318,49 @@ export function ConditionalBranchConfig({ config, onConfigChange }: { config: an
         <input
           type="text"
           value={condition}
-          onChange={(e) => setCondition(e.target.value)}
+          onChange={(e) => handleChange(e.target.value, truePath, falsePath)}
           className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
-          placeholder="e.g., {{steps[0].output.status}} == 'success'"
-          onBlur={handleChange}
-          onKeyPress={(e) => e.key === 'Enter' && handleChange()}
+          placeholder="e.g., previous.output.classification == urgent"
         />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-            True Path (Step ID)
+            True Path
           </label>
-          <input
-            type="text"
+          <select
             value={truePath}
-            onChange={(e) => setTruePath(e.target.value)}
-            className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
-            placeholder="Next step if true"
-            onBlur={handleChange}
-            onKeyPress={(e) => e.key === 'Enter' && handleChange()}
-          />
+            onChange={(e) => handleChange(condition, e.target.value, falsePath)}
+            className="w-full px-2 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors cursor-pointer"
+          >
+            <option value="">Continue to next step</option>
+            <option value="end">End workflow</option>
+            {validTargets.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name || s.type} (Pos {s.position + 1})
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
           <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-            False Path (Step ID)
+            False Path
           </label>
-          <input
-            type="text"
+          <select
             value={falsePath}
-            onChange={(e) => setFalsePath(e.target.value)}
-            className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
-            placeholder="Next step if false"
-            onBlur={handleChange}
-            onKeyPress={(e) => e.key === 'Enter' && handleChange()}
-          />
+            onChange={(e) => handleChange(condition, truePath, e.target.value)}
+            className="w-full px-2 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors cursor-pointer"
+          >
+            <option value="">Continue to next step</option>
+            <option value="end">End workflow</option>
+            {validTargets.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name || s.type} (Pos {s.position + 1})
+              </option>
+            ))}
+          </select>
         </div>
       </div>
     </div>
@@ -349,10 +416,18 @@ export function ApprovalGateConfig({ config, onConfigChange }: { config: any; on
   )
 }
 
-export function StepConfigUI({ stepType, config, onConfigChange }: {
+export function StepConfigUI({
+  stepType,
+  config,
+  onConfigChange,
+  steps = [],
+  currentStepId,
+}: {
   stepType: string
   config: any
   onConfigChange: (config: any) => void
+  steps?: any[]
+  currentStepId?: string | null
 }) {
   switch (stepType) {
     case 'llm_call':
@@ -364,7 +439,14 @@ export function StepConfigUI({ stepType, config, onConfigChange }: {
     case 'notify':
       return <NotifyConfig config={config} onConfigChange={onConfigChange} />
     case 'conditional_branch':
-      return <ConditionalBranchConfig config={config} onConfigChange={onConfigChange} />
+      return (
+        <ConditionalBranchConfig
+          config={config}
+          onConfigChange={onConfigChange}
+          steps={steps}
+          currentStepId={currentStepId}
+        />
+      )
     case 'approval_gate':
       return <ApprovalGateConfig config={config} onConfigChange={onConfigChange} />
     default:
