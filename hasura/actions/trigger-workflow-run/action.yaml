@@ -11,12 +11,12 @@ definition:
     - name: status
       type: String!
   handler:
-    endpoint: https://example.com/api/trigger-workflow-run
+    endpoint: {{env.API_URL}}/api/trigger-workflow-run
     method: POST
   headers:
-  - key: Content-Type
+  - name: Content-Type
     value: application/json
-  - key: X-Hasura-User-Id
-    value: from-session-variable: X-Hasura-User-Id
-  - key: X-Hasura-Role
-    value: from-session-variable: X-Hasura-Role
+  - name: X-Hasura-User-Id
+    value_from_session_variable: x-hasura-user-id
+  - name: X-Hasura-Role
+    value_from_session_variable: x-hasura-role

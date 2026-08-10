@@ -45,15 +45,6 @@ export default function NewWorkflowPage() {
   const [orgsResult] = useQuery({ query: GetMyOrgsQuery })
   const [, insertWorkflow] = useMutation(InsertWorkflowMutation)
 
-  interface OrgMember {
-    org_id: string
-    role: string
-    organization: {
-      id: string
-      name: string
-    }
-  }
-
   const { data, fetching, error } = orgsResult
   const members = data?.org_members || []
 
@@ -109,80 +100,71 @@ export default function NewWorkflowPage() {
   return (
     <div className="space-y-6 max-w-4xl mx-auto animate-fade-in">
       {/* Navigation Breadcrumb */}
-      <div className="border-b border-white/5 pb-5">
-        <div className="flex items-center space-x-2 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-          <Link href="/workflows" className="hover:text-white transition-colors duration-150">
+      <div className="border-b border-zinc-800 pb-4">
+        <div className="flex items-center space-x-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+          <Link href="/workflows" className="hover:text-zinc-300 transition-colors duration-150">
             Workflows
           </Link>
           <span>/</span>
-          <span className="text-violet-400">New Workflow</span>
+          <span className="text-zinc-400">New Workflow</span>
         </div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Create New Workflow</h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Configure a new autonomous pipeline with triggers, nodes, and tool integrations
+        <h1 className="text-xl font-semibold text-zinc-100 tracking-tight">Create Workflow</h1>
+        <p className="text-xs text-zinc-400 mt-1">
+          Configure properties to build a new automated processing pipeline.
         </p>
       </div>
 
       {/* Loading state */}
       {fetching && (
-        <div className="bg-slate-900/20 border border-white/5 rounded-2xl p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
-          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-violet-500 mb-4"></div>
-          <p className="text-slate-400 text-sm">Loading your organizations...</p>
+        <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-12 text-center flex flex-col items-center justify-center min-h-[250px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-zinc-600 mb-3"></div>
+          <p className="text-zinc-400 text-xs">Querying tenant organizations...</p>
         </div>
       )}
 
       {/* Error state */}
       {!fetching && error && (
-        <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-2xl p-6 text-sm flex items-start space-x-2">
-          <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+        <div className="bg-rose-950/20 border border-rose-800/30 text-rose-300 rounded-lg p-5 text-xs flex items-start space-x-3">
+          <div className="shrink-0 text-rose-400 font-bold mt-0.5">⚠️</div>
           <div>
-            <h4 className="font-bold">Failed to load organizations</h4>
-            <p className="mt-1 text-xs text-rose-400">{error.message}</p>
+            <h4 className="font-semibold">Failed to load organizations</h4>
+            <p className="mt-1 text-zinc-400 font-mono">{error.message}</p>
           </div>
         </div>
       )}
 
       {/* Workflow Builder Form */}
       {!fetching && !error && (
-        <div className="bg-slate-900/40 border border-white/5 rounded-2xl p-8 space-y-6">
+        <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-6 space-y-6">
           {!hasEditRights ? (
             /* Viewer message */
-            <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-xl text-sm flex items-start space-x-2">
-              <span className="text-lg">��⚠��️</span>
-              <div>
-                <h4 className="font-bold uppercase tracking-wider text-[10px]">Permission Denied</h4>
-                <p className="mt-1 text-xs text-amber-400">
-                  Your current account role (Viewer) does not permit creating new workflows in any organization. Please contact your organization owner or administrator to request an upgrade to Editor or Owner.
-                </p>
-              </div>
+            <div className="p-4 bg-amber-950/20 border border-amber-800/30 text-amber-300 rounded-lg text-xs">
+              <h4 className="font-semibold uppercase tracking-wider text-[10px] text-amber-400">Permission Required</h4>
+              <p className="mt-1 text-zinc-400 leading-normal">
+                Your current account role (Viewer) does not permit creating new workflows in any organization. Please contact your administrator.
+              </p>
             </div>
           ) : (
             /* Sandbox banner */
-            <div className="flex items-center space-x-4 p-4 bg-violet-600/10 border border-violet-500/20 rounded-xl">
-              <span className="text-2xl">���🏗��️</span>
-              <span className="text-2xl">🏗️</span>
-              <div>
-                <h4 className="text-sm font-bold text-white">Workflow Builder Sandbox</h4>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Input details below to register your workflow definition. Once registered, you will be able to construct node parameters.
-                </p>
-              </div>
+            <div className="p-4 bg-zinc-950/40 border border-zinc-800 rounded-lg">
+              <h4 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider">Workflow Configuration</h4>
+              <p className="text-[11px] text-zinc-400 mt-1 leading-normal">
+                Register the workflow properties. Once created, you will be redirected to configure the builder nodes and execution parameters.
+              </p>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5 pt-4 border-t border-white/5">
+          <form onSubmit={handleSubmit} className="space-y-4 pt-4 border-t border-zinc-800">
             {saveError && (
-              <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl text-xs">
+              <div className="p-3.5 bg-rose-950/20 border border-rose-800/30 text-rose-300 rounded-lg text-xs">
                 {saveError}
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Workflow Name */}
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400" htmlFor="name">
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400" htmlFor="name">
                   Workflow Name
                 </label>
                 <input
@@ -192,14 +174,14 @@ export default function NewWorkflowPage() {
                   onChange={(e) => setName(e.target.value)}
                   disabled={isSaving || !hasEditRights}
                   required
-                  className="w-full px-4 py-2.5 bg-slate-950/40 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 text-white font-medium text-sm transition-all placeholder:text-gray-600"
+                  className="w-full px-3 py-2 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors placeholder:text-zinc-700"
                   placeholder="E.g., Customer Analyzer Pipeline"
                 />
               </div>
 
               {/* Organization selection */}
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400" htmlFor="organization">
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400" htmlFor="organization">
                   Target Organization
                 </label>
                 {editableOrgs.length > 1 ? (
@@ -208,7 +190,7 @@ export default function NewWorkflowPage() {
                     value={selectedOrgId}
                     onChange={(e) => setSelectedOrgId(e.target.value)}
                     disabled={isSaving || !hasEditRights}
-                    className="w-full px-4 py-2.5 bg-slate-950/40 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 text-white font-medium text-sm transition-all"
+                    className="w-full px-3 py-2 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
                   >
                     {editableOrgs.map((m: any) => (
                       <option key={m.org_id} value={m.org_id}>
@@ -222,15 +204,15 @@ export default function NewWorkflowPage() {
                     type="text"
                     value={editableOrgs[0]?.organization?.name || 'Selected Organization'}
                     disabled
-                    className="w-full px-4 py-2.5 bg-slate-950/20 border border-white/5 rounded-xl text-slate-500 font-medium text-sm select-none"
+                    className="w-full px-3 py-2 bg-[#0e0e11]/60 border border-zinc-800 rounded-md text-zinc-500 text-xs select-none"
                   />
                 )}
               </div>
             </div>
 
             {/* Description */}
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400" htmlFor="description">
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400" htmlFor="description">
                 Description
               </label>
               <textarea
@@ -239,23 +221,23 @@ export default function NewWorkflowPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 disabled={isSaving || !hasEditRights}
                 rows={4}
-                className="w-full px-4 py-2.5 bg-slate-950/40 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 text-white text-sm transition-all resize-none placeholder:text-gray-600"
-                placeholder="Briefly describe what this agent workflow does..."
+                className="w-full px-3 py-2 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors resize-none placeholder:text-zinc-700"
+                placeholder="Briefly describe the task automation logic..."
               />
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-between pt-6 border-t border-white/5">
+            <div className="flex items-center justify-between pt-4 border-t border-zinc-800">
               <Link
                 href="/workflows"
-                className="text-xs font-semibold text-slate-400 hover:text-white transition-colors duration-150"
+                className="text-xs font-medium text-zinc-400 hover:text-zinc-100 transition-colors duration-150"
               >
-                ← Cancel and go back
+                ← Cancel
               </Link>
               <button
                 type="submit"
                 disabled={isSaving || !hasEditRights || !selectedOrgId}
-                className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold py-2.5 px-6 rounded-xl text-sm transition-all duration-150 shadow-md shadow-indigo-600/20 active:scale-[0.98] transform cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-1.5 px-4 rounded-md text-xs transition-colors duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isSaving ? 'Saving...' : 'Save Workflow'}
               </button>

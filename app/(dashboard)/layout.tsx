@@ -22,28 +22,29 @@ export default function DashboardLayout({
   }
 
   const navItems = [
-    { name: 'Dashboard', href: '/' },
+    { name: 'Overview', href: '/' },
     { name: 'Workflows', href: '/workflows' },
-    { name: 'New Workflow', href: '/workflows/new' },
+    { name: 'Build Workflow', href: '/workflows/new' },
   ]
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      <div className="min-h-screen bg-[#0e0e11] text-zinc-100 flex flex-col font-sans">
         {/* Navigation Bar */}
-        <header className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-md border-b border-white/5">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
+        <header className="sticky top-0 z-40 bg-[#16161a] border-b border-zinc-800">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex justify-between items-center">
             
             {/* Logo */}
-            <div className="flex items-center space-x-8">
-              <Link href="/" className="flex items-center space-x-2 group">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-md shadow-indigo-600/30 group-hover:scale-105 transition-transform duration-200">
-                  AI
+            <div className="flex items-center space-x-6">
+              <Link href="/" className="flex items-center space-x-2.5 group">
+                <div className="w-7 h-7 rounded-md bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-100 font-bold text-xs">
+                  ⚙️
                 </div>
-                <span className="font-extrabold tracking-tight text-white group-hover:text-violet-400 transition-colors duration-200">
-                  Workflow Builder
+                <span className="font-semibold tracking-tight text-zinc-100 text-sm">
+                  Workflow Console
                 </span>
               </Link>
+              <div className="h-4 w-[1px] bg-zinc-800 hidden md:block" />
 
               {/* Navigation items */}
               <nav className="hidden md:flex space-x-1">
@@ -53,10 +54,10 @@ export default function DashboardLayout({
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 ${
                         isActive
-                          ? 'bg-white/10 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                          ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
+                          : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/40'
                       }`}
                     >
                       {item.name}
@@ -70,14 +71,14 @@ export default function DashboardLayout({
             <div className="flex items-center space-x-4">
               {email && (
                 <div className="hidden sm:flex flex-col items-end">
-                  <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">User session</span>
-                  <span className="text-xs text-slate-300 font-semibold">{email}</span>
+                  <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-semibold">Session User</span>
+                  <span className="text-xs text-zinc-300 font-mono">{email}</span>
                 </div>
               )}
               
               <button
                 onClick={handleLogout}
-                className="bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-200 hover:text-white text-xs font-semibold py-2 px-4 rounded-lg border border-white/5 transition-all duration-150 ease-in-out cursor-pointer active:scale-95 transform"
+                className="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 text-xs font-medium py-1.5 px-3 rounded-md border border-zinc-800 transition-colors duration-150 cursor-pointer"
               >
                 Sign Out
               </button>
@@ -87,12 +88,8 @@ export default function DashboardLayout({
         </header>
 
         {/* Main Content Space */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
-          {/* Subtle background blur blobs */}
-          <div className="absolute top-1/4 left-1/3 w-96 h-96 rounded-full bg-violet-600/5 blur-[120px] pointer-events-none" />
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-blue-600/5 blur-[120px] pointer-events-none" />
-          
-          <div className="relative z-10">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="relative">
             {children}
           </div>
         </main>
