@@ -38,6 +38,15 @@ const DeleteWorkflowMutation = `
   }
 `
 
+const TriggerWorkflowRunMutation = `
+  mutation TriggerWorkflowRun($workflow_id: uuid!) {
+    triggerWorkflowRun(workflow_id: $workflow_id) {
+      run_id
+      status
+    }
+  }
+`
+
 const DEFAULT_STEP_CONFIG: Record<StepType, any> = {
   llm_call: { model: 'llama3-8b-8192', prompt: '' },
   http_request: { method: 'GET', url: '', headers: {}, body: '' },
@@ -100,6 +109,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
   const [, updateWorkflowStep] = useMutation(UpdateWorkflowStepMutation)
   const [, deleteWorkflowStep] = useMutation(DeleteWorkflowStepMutation)
   const [, updateStepPosition] = useMutation(UpdateWorkflowStepPositionMutation)
+  const [, triggerWorkflowRun] = useMutation(TriggerWorkflowRunMutation)
 
   const { data, fetching, error } = result
   const workflow = data?.workflows_by_pk
@@ -290,22 +300,19 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
     setRunStatus(null)
 
     try {
-      const response = await fetch('/api/trigger-workflow-run', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ workflow_id: workflowId }),
-      })
+      const res = await triggerWorkflowRun({ workflow_id: workflowId })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to trigger workflow')
+      if (res.error) {
+        throw new Error(res.error.message || 'Failed to trigger workflow')
       }
 
-      setRunId(data.run_id)
-      setRunStatus(data.status)
+      const runData = res.data?.triggerWorkflowRun
+      if (!runData) {
+        throw new Error('No execution run data returned')
+      }
+
+      setRunId(runData.run_id)
+      setRunStatus(runData.status)
       reexecute() // Refresh execution logs
     } catch (error: any) {
       console.error('Error triggering workflow:', error)
