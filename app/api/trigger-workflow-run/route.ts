@@ -185,15 +185,14 @@ export async function POST(request: NextRequest) {
     // Parse the Hasura Action body
     const body = await request.json()
 
-    // Temporary SAFE diagnostic logging of incoming request shape
-    console.log('--- Hasura Action Webhook Diagnostic Log ---')
-    console.log('Body keys:', Object.keys(body || {}))
-    console.log('Body.input keys:', Object.keys(body?.input || {}))
-    console.log('Body.session_variables keys:', Object.keys(body?.session_variables || {}))
-    console.log('workflow_id in body:', !!body?.workflow_id)
-    console.log('workflow_id in body.input:', !!body?.input?.workflow_id)
-    console.log('x-hasura-user-id in body.session_variables:', !!body?.session_variables?.['x-hasura-user-id'])
-    console.log('--------------------------------------------')
+    // Precise SAFE diagnostic logging (no values of authorization, tokens, or raw body logged)
+    console.log('[DIAGNOSTIC] Body keys:', Object.keys(body || {}))
+    console.log('[DIAGNOSTIC] Body.input keys:', Object.keys(body?.input ?? {}))
+    console.log('[DIAGNOSTIC] Body.session_variables keys:', Object.keys(body?.session_variables ?? {}))
+    console.log('[DIAGNOSTIC] typeof body.input?.workflow_id:', typeof body?.input?.workflow_id)
+    console.log('[DIAGNOSTIC] body.session_variables[\'x-hasura-user-id\'] exists:', !!body?.session_variables?.['x-hasura-user-id'])
+    console.log('[DIAGNOSTIC] request.headers[\'x-hasura-user-id\'] exists:', !!(request.headers.get('x-hasura-user-id') || request.headers.get('X-Hasura-User-Id')))
+    console.log('[DIAGNOSTIC] Available header keys:', Array.from(request.headers.keys()))
 
     // Extract workflow_id from the payload (primary source: body.input.workflow_id)
     const workflow_id = body?.input?.workflow_id || body?.workflow_id || body?.input?.id || body?.id
