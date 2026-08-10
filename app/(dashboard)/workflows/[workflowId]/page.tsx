@@ -14,38 +14,10 @@ import {
   DeleteWorkflowStepMutation,
   UpdateWorkflowStepPositionMutation
 } from '@/graphql/mutations/steps'
+import { TriggerWorkflowRunMutation } from '@/graphql/mutations/workflow-run'
+import { DeleteWorkflowMutation, UpdateWorkflowMutation } from '@/graphql/mutations/workflows'
 
 type StepType = 'llm_call' | 'http_request' | 'db_write' | 'notify' | 'conditional_branch' | 'approval_gate'
-
-const UpdateWorkflowMutation = `
-  mutation UpdateWorkflow($id: uuid!, $name: String!, $description: String!) {
-    update_workflows_by_pk(
-      pk_columns: { id: $id }
-      _set: { name: $name, description: $description }
-    ) {
-      id
-      name
-      description
-    }
-  }
-`
-
-const DeleteWorkflowMutation = `
-  mutation DeleteWorkflow($id: uuid!) {
-    delete_workflows_by_pk(id: $id) {
-      id
-    }
-  }
-`
-
-const TriggerWorkflowRunMutation = `
-  mutation TriggerWorkflowRun($workflow_id: uuid!) {
-    triggerWorkflowRun(workflow_id: $workflow_id) {
-      run_id
-      status
-    }
-  }
-`
 
 const DEFAULT_STEP_CONFIG: Record<StepType, any> = {
   llm_call: { model: 'llama3-8b-8192', prompt: '' },
@@ -196,7 +168,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
     }
 
     try {
-      const res = await deleteWorkflowStep({ id: stepId })
+      const res = await deleteWorkflowStep({ id: stepId, workflowId })
       ensureMutationSucceeded(res, 'Failed to delete step')
       reexecute()
     } catch (err: any) {
@@ -224,11 +196,12 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
       let res
       if (editingStepId) {
         // Edit step
-        res = await updateWorkflowStep({
-          id: editingStepId,
-          name: stepName,
-          type: stepType,
-          config: parsedConfig
+          res = await updateWorkflowStep({
+            id: editingStepId,
+            workflowId,
+            name: stepName,
+            type: stepType,
+            config: parsedConfig
         })
         ensureMutationSucceeded(res, 'Failed to save step')
       } else {
@@ -752,43 +725,6 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                 )}
               </div>
             )}
-
-            {/* Triggers Card */}
-            <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-5 space-y-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center justify-between">
-                <span>Triggers</span>
-                <span className="text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-400 px-1.5 py-0.2 rounded font-semibold">
-                  {workflow.workflow_triggers.length}
-                </span>
-              </h3>
-
-              {workflow.workflow_triggers.length === 0 ? (
-                <div className="border border-dashed border-zinc-800 rounded-md p-4 text-center text-zinc-500 text-[11px]">
-                  No trigger defined.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {workflow.workflow_triggers.map((trigger: any) => (
-                    <div key={trigger.id} className="bg-[#0e0e11] border border-zinc-850 rounded p-3 space-y-1.5 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-zinc-300">
-                          {trigger.type}
-                        </span>
-                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${trigger.enabled ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-500'}`}>
-                          {trigger.enabled ? 'Active' : 'Disabled'}
-                        </span>
-                      </div>
-                      
-                      {trigger.config && Object.keys(trigger.config).length > 0 && (
-                        <pre className="text-[10px] font-mono text-zinc-500 overflow-x-auto bg-black/20 p-2 rounded">
-                          {JSON.stringify(trigger.config, null, 2)}
-                        </pre>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
 
             {/* Dangerous Actions Box */}
             {canDelete && (

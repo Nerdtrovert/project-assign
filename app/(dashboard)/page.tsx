@@ -9,7 +9,7 @@ const GetDashboardStatsQuery = gql`
       id
       name
     }
-    workflow_runs(order_by: { created_at: desc }, limit: 5) {
+    workflow_runs(order_by: { started_at: desc }, limit: 5) {
       id
       status
       started_at

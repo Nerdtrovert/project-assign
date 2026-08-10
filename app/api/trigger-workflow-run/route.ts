@@ -4,6 +4,25 @@ import { NextRequest, NextResponse } from 'next/server'
 const GROQ_API_KEY = process.env.GROQ_API_KEY
 const NHOST_ADMIN_SECRET = process.env.NHOST_ADMIN_SECRET
 const NHOST_BACKEND_URL = process.env.NHOST_BACKEND_URL
+const NHOST_REGION = process.env.NEXT_PUBLIC_NHOST_REGION || process.env.NHOST_REGION || 'ap-south-1'
+
+const resolveGraphqlEndpoint = (backendUrl: string | undefined) => {
+  if (!backendUrl) {
+    return ''
+  }
+
+  const cleanUrl = backendUrl.replace(/\/+$/, '')
+  const match = cleanUrl.match(/https?:\/\/([^.]+)\.nhost\.(run|app)/)
+
+  if (match) {
+    const [, subdomain, tld] = match
+    return `https://${subdomain}.graphql.${NHOST_REGION}.nhost.${tld}/v1`
+  }
+
+  return `${cleanUrl}/v1/graphql`
+}
+
+const NHOST_GRAPHQL_ENDPOINT = resolveGraphqlEndpoint(NHOST_BACKEND_URL)
 
 if (!GROQ_API_KEY) {
   console.warn('GROQ_API_KEY is not set')
@@ -15,15 +34,25 @@ if (!NHOST_BACKEND_URL) {
   console.error('NHOST_BACKEND_URL is not set')
 }
 
-// Helper function to make a GraphQL request to Hasura (using admin secret for server-side operations)
-const graphqlRequest = async (query: string, variables: Record<string, any> = {}) => {
+type WorkflowExecutionError = Error & {
+  attempts?: number
+  operation?: string
+}
+
+const createExecutionError = (message: string, retryable: boolean): WorkflowExecutionError => {
+  const error = new Error(message) as WorkflowExecutionError & { retryable?: boolean }
+  error.retryable = retryable
+  return error
+}
+
+const graphqlRequest = async (query: string, variables: Record<string, unknown> = {}) => {
   const opMatch = query.match(/(query|mutation)\s+(\w+)/)
   const opName = opMatch ? opMatch[2] : 'global_graphql_op'
 
   console.log(`[GRAPHQL-REQUEST] Starting: ${opName}`)
 
   try {
-    const response = await fetch(`${NHOST_BACKEND_URL}/v1/graphql`, {
+    const response = await fetch(NHOST_GRAPHQL_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -35,9 +64,14 @@ const graphqlRequest = async (query: string, variables: Record<string, any> = {}
     console.log(`[GRAPHQL-RESPONSE] ${opName} HTTP Status: ${response.status} ${response.statusText}`)
 
     if (!response.ok) {
-      const text = await response.text()
-      console.error(`[GRAPHQL-RESPONSE] ${opName} HTTP Non-2xx response:`, text.slice(0, 1000))
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      console.error('[WORKFLOW-GRAPHQL-ERROR]', {
+        operation: opName,
+        httpStatus: response.status,
+        message: response.statusText,
+      })
+      const err = new Error(`HTTP ${response.status}: ${response.statusText}`) as WorkflowExecutionError
+      err.operation = opName
+      throw err
     }
 
     const json = await response.json()
@@ -47,16 +81,27 @@ const graphqlRequest = async (query: string, variables: Record<string, any> = {}
     console.log(`[GRAPHQL-RESPONSE] ${opName} hasData: ${hasData}, hasErrors: ${hasErrors}`)
 
     if (json.errors) {
-      json.errors.forEach((err: any, idx: number) => {
-        console.error(`[GRAPHQL-RESPONSE] ${opName} Error #${idx + 1}: ${err.message} at ${JSON.stringify(err.path || [])} (Code: ${err.extensions?.code || 'none'})`)
+      json.errors.forEach((graphqlError: { message: string; path?: unknown; extensions?: { code?: string } }) => {
+        console.error('[WORKFLOW-GRAPHQL-ERROR]', {
+          operation: opName,
+          message: graphqlError.message,
+          path: graphqlError.path ?? null,
+          code: graphqlError.extensions?.code ?? null,
+        })
       })
-      throw new Error(json.errors.map((e: any) => e.message).join('. '))
+      const err = new Error(`GraphQL operation ${opName} failed`) as WorkflowExecutionError
+      err.operation = opName
+      throw err
     }
 
     return json.data
-  } catch (err: any) {
-    console.error(`[GRAPHQL-ERROR] ${opName} failed: ${err.name} - ${err.message}`)
-    throw err
+  } catch (err: unknown) {
+    const operationError = err as WorkflowExecutionError
+    console.error(`[GRAPHQL-ERROR] ${opName} failed: ${operationError.name} - ${operationError.message}`)
+    if (!operationError.operation) {
+      operationError.operation = opName
+    }
+    throw operationError
   }
 }
 
@@ -65,8 +110,8 @@ const httpRequestWithRetry = async (
   url: string,
   options: RequestInit = {},
   maxAttempts = 2
-) => {
-  let lastError: any
+): Promise<{ response: Response; attempts: number }> => {
+  let lastError: WorkflowExecutionError | undefined
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await fetch(url, {
@@ -77,26 +122,27 @@ const httpRequestWithRetry = async (
 
       // Retry on 5xx errors
       if (response.status >= 500 && response.status < 600) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        throw createExecutionError(`HTTP ${response.status}: ${response.statusText}`, true)
       }
 
       // For 4xx errors, we don't retry (except maybe 429, but we keep it simple)
       if (response.status >= 400 && response.status < 500) {
-        // We'll still return the response so the caller can handle 4xx as needed
-        return response
+        throw createExecutionError(`HTTP ${response.status}: ${response.statusText}`, false)
       }
 
-      return response
-    } catch (error: any) {
-      lastError = error
-      if (attempt === maxAttempts) {
-        throw error
+      return { response, attempts: attempt }
+    } catch (error: unknown) {
+      const executionError = error as WorkflowExecutionError & { retryable?: boolean }
+      executionError.attempts = attempt
+      lastError = executionError
+      if (executionError.retryable === false || attempt === maxAttempts) {
+        throw executionError
       }
       // Wait for a short delay before retrying (e.g., 500ms)
       await new Promise(resolve => setTimeout(resolve, 500))
     }
   }
-  throw lastError
+  throw lastError ?? createExecutionError('HTTP request failed', true)
 }
 
 // Helper function to call Groq LLM API with retry logic
@@ -104,8 +150,8 @@ const llmCallWithRetry = async (
   model: string,
   prompt: string,
   maxAttempts = 2
-) => {
-  let lastError: any
+): Promise<{ output: string; attempts: number }> => {
+  let lastError: WorkflowExecutionError | undefined
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -125,24 +171,26 @@ const llmCallWithRetry = async (
       if (!response.ok) {
         // Retry on 5xx errors
         if (response.status >= 500 && response.status < 600) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+          throw createExecutionError(`HTTP ${response.status}: ${response.statusText}`, true)
         }
         // For 4xx errors, we don't retry
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        throw createExecutionError(`HTTP ${response.status}: ${response.statusText}`, false)
       }
 
       const data = await response.json()
-      return data.choices[0]?.message?.content || ''
-    } catch (error: any) {
-      lastError = error
-      if (attempt === maxAttempts) {
-        throw error
+      return { output: data.choices[0]?.message?.content || '', attempts: attempt }
+    } catch (error: unknown) {
+      const executionError = error as WorkflowExecutionError & { retryable?: boolean }
+      executionError.attempts = attempt
+      lastError = executionError
+      if (executionError.retryable === false || attempt === maxAttempts) {
+        throw executionError
       }
       // Wait for a short delay before retrying
       await new Promise(resolve => setTimeout(resolve, 500))
     }
   }
-  throw lastError
+  throw lastError ?? createExecutionError('LLM request failed', true)
 }
 
 // Helper function to evaluate a simple condition on the previous output
@@ -212,33 +260,16 @@ export async function POST(request: NextRequest) {
     // Parse the Hasura Action body
     const body = await request.json()
 
-    // Precise SAFE diagnostic logging (no values of authorization, tokens, or raw body logged)
-    console.log('[DIAGNOSTIC] Body keys:', Object.keys(body || {}))
-    console.log('[DIAGNOSTIC] Body.input keys:', Object.keys(body?.input ?? {}))
-    console.log('[DIAGNOSTIC] Body.session_variables keys:', Object.keys(body?.session_variables ?? {}))
-    console.log('[DIAGNOSTIC] typeof body.input?.workflow_id:', typeof body?.input?.workflow_id)
-    console.log('[DIAGNOSTIC] body.session_variables[\'x-hasura-user-id\'] exists:', !!body?.session_variables?.['x-hasura-user-id'])
-    console.log('[DIAGNOSTIC] request.headers[\'x-hasura-user-id\'] exists:', !!(request.headers.get('x-hasura-user-id') || request.headers.get('X-Hasura-User-Id')))
-    console.log('[DIAGNOSTIC] Available header keys:', Array.from(request.headers.keys()))
+    if (body?.action?.name !== 'triggerWorkflowRun') {
+      return NextResponse.json({ error: 'Invalid Hasura Action request' }, { status: 400 })
+    }
 
-    // Extract workflow_id from the payload (primary source: body.input.workflow_id)
-    const workflow_id = body?.input?.workflow_id || body?.workflow_id || body?.input?.id || body?.id
+    const workflow_id = body?.input?.workflow_id
     if (!workflow_id) {
       return NextResponse.json({ error: 'Missing workflow_id in Hasura Action input' }, { status: 400 })
     }
 
-    // Read the authenticated user ID from body.session_variables['x-hasura-user-id']
-    let userId = body?.session_variables?.['x-hasura-user-id']
-    // Read the Hasura role from body.session_variables['x-hasura-role']
-    let role = body?.session_variables?.['x-hasura-role']
-
-    // For backwards compatibility during debugging, fallback to HTTP headers if session_variables is absent
-    if (!userId) {
-      userId = request.headers.get('x-hasura-user-id') || request.headers.get('X-Hasura-User-Id')
-    }
-    if (!role) {
-      role = request.headers.get('x-hasura-role') || request.headers.get('X-Hasura-Role')
-    }
+    const userId = body?.session_variables?.['x-hasura-user-id']
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized: missing user ID' }, { status: 401 })
@@ -249,58 +280,6 @@ export async function POST(request: NextRequest) {
     if (!adminSecret) {
       console.error('NHOST_ADMIN_SECRET is not set')
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
-    }
-
-    // Verify environment variables presence (boolean only, no values logged)
-    console.log('[DIAGNOSTIC] NHOST_ADMIN_SECRET present:', !!process.env.NHOST_ADMIN_SECRET)
-    console.log('[DIAGNOSTIC] NHOST_BACKEND_URL present:', !!process.env.NHOST_BACKEND_URL)
-    console.log('[DIAGNOSTIC] GROQ_API_KEY present:', !!process.env.GROQ_API_KEY)
-
-    const graphqlEndpoint = `${process.env.NHOST_BACKEND_URL}/v1/graphql`
-
-    // Helper function to make a GraphQL request
-    const graphqlRequest = async (query: string, variables: Record<string, any> = {}) => {
-      const opMatch = query.match(/(query|mutation)\s+(\w+)/)
-      const opName = opMatch ? opMatch[2] : 'local_graphql_op'
-
-      console.log(`[GRAPHQL-REQUEST] Starting: ${opName}`)
-
-      try {
-        const response = await fetch(graphqlEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-hasura-admin-secret': adminSecret,
-          },
-          body: JSON.stringify({ query, variables }),
-        })
-
-        console.log(`[GRAPHQL-RESPONSE] ${opName} HTTP Status: ${response.status} ${response.statusText}`)
-
-        if (!response.ok) {
-          const text = await response.text()
-          console.error(`[GRAPHQL-RESPONSE] ${opName} HTTP Non-2xx response:`, text.slice(0, 1000))
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-
-        const json = await response.json()
-        const hasErrors = !!json.errors
-        const hasData = !!json.data
-
-        console.log(`[GRAPHQL-RESPONSE] ${opName} hasData: ${hasData}, hasErrors: ${hasErrors}`)
-
-        if (json.errors) {
-          json.errors.forEach((err: any, idx: number) => {
-            console.error(`[GRAPHQL-RESPONSE] ${opName} Error #${idx + 1}: ${err.message} at ${JSON.stringify(err.path || [])} (Code: ${err.extensions?.code || 'none'})`)
-          })
-          throw new Error(json.errors.map((e: any) => e.message).join('. '))
-        }
-
-        return json.data
-      } catch (err: any) {
-        console.error(`[GRAPHQL-ERROR] ${opName} failed: ${err.name} - ${err.message}`)
-        throw err
-      }
     }
 
     // 1. Load the workflow and check existence
@@ -400,7 +379,6 @@ export async function POST(request: NextRequest) {
     // 7. Process each step
     let currentStepIndex = 0
     let skipNextStep = false
-    let skippedStepRunId: string | null = null
 
     while (currentStepIndex < steps.length) {
       const step = steps[currentStepIndex]
@@ -411,15 +389,13 @@ export async function POST(request: NextRequest) {
       if (skipNextStep) {
         // Create a step_run for this step with status skipped
         const skippedStepRunData = await graphqlRequest(`
-          mutation CreateSkippedStepRun($workflow_run_id: uuid!, $workflow_step_id: uuid!, $reason: String!) {
+          mutation CreateSkippedStepRun($workflow_run_id: uuid!, $workflow_step_id: uuid!, $input: jsonb, $reason: jsonb!) {
             insert_step_runs_one(object: {
               workflow_run_id: $workflow_run_id
               workflow_step_id: $workflow_step_id
               status: "skipped"
               input: $input
               attempt_count: 1
-              started_at: now()
-              completed_at: now()
               output: $reason
             }) {
               id
@@ -429,7 +405,7 @@ export async function POST(request: NextRequest) {
           workflow_run_id: runId,
           workflow_step_id: step.id,
           input: previousOutput,
-          reason: `Skipped due to conditional branch at step ${skippedStepRunId ? '(previous)' : ''}`
+          reason: 'Skipped due to the preceding conditional branch'
         })
 
         if (!skippedStepRunData?.insert_step_runs_one) {
@@ -450,14 +426,13 @@ export async function POST(request: NextRequest) {
 
       // Create step_run for this step (we'll update it later based on execution)
       const stepRunData = await graphqlRequest(`
-        mutation CreateStepRun($workflow_run_id: uuid!, $workflow_step_id: uuid!) {
+        mutation CreateStepRun($workflow_run_id: uuid!, $workflow_step_id: uuid!, $input: jsonb) {
           insert_step_runs_one(object: {
             workflow_run_id: $workflow_run_id
             workflow_step_id: $workflow_step_id
             status: "running"
             input: $input
             attempt_count: 1
-            started_at: now()
           }) {
             id
           }
@@ -485,7 +460,7 @@ export async function POST(request: NextRequest) {
 
       let stepOutput = null
       let stepError = null
-      let stepStatus = 'completed'
+      let attemptCount = 1
 
       try {
         // 8. Execute the step based on type
@@ -500,7 +475,9 @@ export async function POST(request: NextRequest) {
               /\{\{previous_output\}\}/g,
               previousOutput !== null ? JSON.stringify(previousOutput) : ''
             )
-            stepOutput = await llmCallWithRetry(model, interpolatedPrompt)
+            const result = await llmCallWithRetry(model, interpolatedPrompt)
+            stepOutput = result.output
+            attemptCount = result.attempts
             break
           }
           case 'http_request': {
@@ -521,11 +498,13 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            const response = await httpRequestWithRetry(interpolatedUrl, {
+            const result = await httpRequestWithRetry(interpolatedUrl, {
               method,
               headers: typeof headers === 'object' ? headers : JSON.parse(headers),
               body: body !== undefined ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
             })
+            const response = result.response
+            attemptCount = result.attempts
 
             // Store response status, body, and headers in step output
             const responseBody = await response.text()
@@ -575,21 +554,21 @@ export async function POST(request: NextRequest) {
         if (stepOutput !== null && stepOutput !== undefined) {
           // Update step_run with output and status completed
           await graphqlRequest(`
-            mutation UpdateStepRunCompleted($id: uuid!, $output: jsonb) {
-              update_step_runs_by_pk(pk_columns: { id: $id }, _set: { output: $output, status: "completed", completed_at: now() }) {
+            mutation UpdateStepRunCompleted($id: uuid!, $output: jsonb, $attempt_count: Int!) {
+              update_step_runs_by_pk(pk_columns: { id: $id }, _set: { output: $output, status: "completed", attempt_count: $attempt_count }) {
                 id
               }
             }
-          `, { id: stepRunId, output: stepOutput })
+          `, { id: stepRunId, output: stepOutput, attempt_count: attemptCount })
         } else {
           // If stepOutput is null, we still mark as completed (should not happen)
           await graphqlRequest(`
-            mutation UpdateStepRunCompleted($id: uuid!) {
-              update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "completed", completed_at: now() }) {
+            mutation UpdateStepRunCompleted($id: uuid!, $attempt_count: Int!) {
+              update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "completed", attempt_count: $attempt_count }) {
                 id
               }
             }
-          `, { id: stepRunId })
+          `, { id: stepRunId, attempt_count: attemptCount })
         }
 
         // Set previous output for the next step
@@ -597,14 +576,14 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         // If step execution fails, update step_run to failed and break
         stepError = error instanceof Error ? error.message : String(error)
+        attemptCount = (error as WorkflowExecutionError).attempts ?? attemptCount
         await graphqlRequest(`
-          mutation UpdateStepRunFailed($id: uuid!, $message: String!) {
-            update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", error: $message, completed_at: now() }) {
+          mutation UpdateStepRunFailed($id: uuid!, $message: String!, $attempt_count: Int!) {
+            update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", error: $message, attempt_count: $attempt_count }) {
               id
             }
           }
-        `, { id: stepRunId, message: stepError })
-        stepStatus = 'failed'
+        `, { id: stepRunId, message: stepError, attempt_count: attemptCount })
 
         // Update workflow_run to failed
         await graphqlRequest(`
@@ -614,7 +593,7 @@ export async function POST(request: NextRequest) {
             }
           }
         `, { id: runId })
-        return NextResponse.json({ error: `Step execution failed: ${stepError}` }, { status: 500 })
+        return NextResponse.json({ error: 'Workflow execution failed' }, { status: 500 })
       }
 
       // Move to the next step
@@ -642,8 +621,12 @@ export async function POST(request: NextRequest) {
 
     // 11. Return the workflow run ID and status
     return NextResponse.json({ run_id: runId, status: 'completed' })
-  } catch (error) {
-    console.error('Error in triggerWorkflowRun:', error)
+  } catch (error: unknown) {
+    const executionError = error as WorkflowExecutionError
+    console.error('Workflow execution failed', {
+      operation: executionError.operation ?? null,
+      message: executionError.message,
+    })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

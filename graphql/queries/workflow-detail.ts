@@ -14,12 +14,6 @@ export const GetWorkflowDetailQuery = gql`
         config
         position
       }
-      workflow_triggers {
-        id
-        type
-        config
-        enabled
-      }
       workflow_runs(order_by: { started_at: desc }, limit: 10) {
         id
         status
