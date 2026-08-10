@@ -365,19 +365,23 @@ export async function POST(request: NextRequest) {
     currentOperation = 'CreateWorkflowRun'
     console.log('[WORKFLOW] operation: CreateWorkflowRun')
     const runData = await graphqlRequest(`
-      mutation CreateWorkflowRun($workflow_id: uuid!, $created_by: uuid!) {
+      mutation CreateWorkflowRun($workflow_id: uuid!, $created_by: uuid!, $started_at: timestamptz!) {
         insert_workflow_runs_one(object: {
           workflow_id: $workflow_id
           status: "running"
           created_by: $created_by
-          started_at: now()
+          started_at: $started_at
         }) {
           id
           status
           started_at
         }
       }
-    `, { workflow_id: workflow_id, created_by: userId })
+    `, {
+      workflow_id,
+      created_by: userId,
+      started_at: new Date().toISOString(),
+    })
 
     if (!runData?.insert_workflow_runs_one) {
       throw new Error('CreateWorkflowRun returned no workflow run')
@@ -480,12 +484,12 @@ export async function POST(request: NextRequest) {
         currentOperation = 'MarkWorkflowRunFailed'
         console.log('[WORKFLOW] operation: MarkWorkflowRunFailed')
         await graphqlRequest(`
-          mutation UpdateWorkflowRunFailed($id: uuid!) {
-            update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: now() }) {
+          mutation UpdateWorkflowRunFailed($id: uuid!, $completed_at: timestamptz!) {
+            update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: $completed_at }) {
               id
             }
           }
-        `, { id: runId })
+        `, { id: runId, completed_at: new Date().toISOString() })
         throw new Error('CreateStepRun returned no step run')
       }
 
@@ -630,12 +634,12 @@ export async function POST(request: NextRequest) {
         currentOperation = 'MarkWorkflowRunFailed'
         console.log('[WORKFLOW] operation: MarkWorkflowRunFailed')
         await graphqlRequest(`
-          mutation UpdateWorkflowRunFailed($id: uuid!) {
-            update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: now() }) {
+          mutation UpdateWorkflowRunFailed($id: uuid!, $completed_at: timestamptz!) {
+            update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: $completed_at }) {
               id
             }
           }
-        `, { id: runId })
+        `, { id: runId, completed_at: new Date().toISOString() })
         throw error
       }
 
@@ -647,12 +651,12 @@ export async function POST(request: NextRequest) {
     currentOperation = 'MarkWorkflowRunCompleted'
     console.log('[WORKFLOW] operation: MarkWorkflowRunCompleted')
     await graphqlRequest(`
-      mutation UpdateWorkflowRunCompleted($id: uuid!) {
-        update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "completed", completed_at: now() }) {
+      mutation UpdateWorkflowRunCompleted($id: uuid!, $completed_at: timestamptz!) {
+        update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "completed", completed_at: $completed_at }) {
           id
         }
       }
-    `, { id: runId })
+    `, { id: runId, completed_at: new Date().toISOString() })
 
     // Increment quota_used by 1
     currentOperation = 'IncrementQuota'
