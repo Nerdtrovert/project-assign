@@ -16,7 +16,7 @@ import {
 } from '@/graphql/mutations/steps'
 import { TriggerWorkflowRunMutation } from '@/graphql/mutations/workflow-run'
 import { DeleteWorkflowMutation, UpdateWorkflowMutation } from '@/graphql/mutations/workflows'
-
+import nhostClient from '@/lib/nhost/client'
 type StepType = 'llm_call' | 'http_request' | 'db_write' | 'notify' | 'conditional_branch' | 'approval_gate'
 
 const DEFAULT_STEP_CONFIG: Record<StepType, any> = {
@@ -83,6 +83,41 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
   const [, deleteWorkflowStep] = useMutation(DeleteWorkflowStepMutation)
   const [, updateStepPosition] = useMutation(UpdateWorkflowStepPositionMutation)
   const [, triggerWorkflowRun] = useMutation(TriggerWorkflowRunMutation)
+
+  const [approvingRunId, setApprovingRunId] = useState<string | null>(null)
+
+  // Polling loop to get real database state updates without refreshing
+  useEffect(() => {
+    const interval = setInterval(() => {
+      reexecute({ requestPolicy: 'network-only' })
+    }, 1500)
+    return () => clearInterval(interval)
+  }, [reexecute])
+
+  const handleApproveRun = async (runId: string) => {
+    setApprovingRunId(runId)
+    try {
+      const token = nhostClient.auth.getAccessToken()
+      const res = await fetch('/api/approve-workflow-run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+        body: JSON.stringify({ run_id: runId }),
+      })
+      if (!res.ok) {
+        const errJson = await res.json()
+        throw new Error(errJson.error || errJson.details || 'Approval failed')
+      }
+      reexecute({ requestPolicy: 'network-only' })
+    } catch (err: any) {
+      console.error('Approval failed:', err)
+      alert(`Approval error: ${err.message}`)
+    } finally {
+      setApprovingRunId(null)
+    }
+  }
 
   const { data, fetching, error } = result
   const workflow = data?.workflows_by_pk
@@ -623,6 +658,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                             <span className={`h-1.5 w-1.5 rounded-full ${
                               run.status === 'completed' ? 'bg-emerald-500' :
                               run.status === 'running' ? 'bg-amber-500 animate-pulse' :
+                              run.status === 'paused' ? 'bg-amber-500' :
                               'bg-rose-500'
                             }`} />
                             <div>
@@ -634,10 +670,11 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                             <span className="text-[10px] font-mono text-zinc-400">{duration ? `${duration}` : ''}</span>
                             <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
                               run.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
-                              run.status === 'running' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                              run.status === 'running' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 animate-pulse' :
+                              run.status === 'paused' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
                               'bg-rose-500/10 border-rose-500/20 text-rose-400'
                             }`}>
-                              {run.status}
+                              {run.status === 'paused' ? 'WAITING APPROVAL' : run.status}
                             </span>
                           </div>
                         </div>
@@ -670,10 +707,11 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                           <div className="flex items-center space-x-2">
                                             <span className={`text-[8px] font-bold uppercase tracking-wider px-1 py-0.2 rounded border ${
                                               stepRun.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
-                                              stepRun.status === 'skipped' ? 'bg-zinc-800 border-zinc-700 text-zinc-400' :
+                                              stepRun.status === 'skipped' ? 'bg-zinc-850 border-zinc-800 text-zinc-500' :
+                                              stepRun.status === 'paused' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
                                               'bg-rose-500/10 border-rose-500/20 text-rose-400'
                                             }`}>
-                                              {stepRun.status}
+                                              {stepRun.status === 'paused' ? 'PENDING APPROVAL' : stepRun.status}
                                             </span>
                                             {(stepRun.input || stepRun.output || stepRun.error) && (
                                               <button
@@ -685,6 +723,29 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                             )}
                                           </div>
                                         </div>
+
+                                        {stepRun.status === 'paused' && (
+                                          <div className="bg-amber-950/15 border border-amber-900/20 rounded p-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
+                                            <div className="space-y-0.5">
+                                              <span className="block text-[8px] font-semibold text-amber-550 uppercase tracking-wider">Approval Paused</span>
+                                              <span className="text-zinc-300 text-[10px]">
+                                                {stepRun.output?.message || 'Requires owner/editor approval to resume.'}
+                                              </span>
+                                            </div>
+                                            {canEdit && (
+                                              <button
+                                                onClick={async (e) => {
+                                                  e.stopPropagation()
+                                                  await handleApproveRun(run.id)
+                                                }}
+                                                disabled={approvingRunId === run.id}
+                                                className="bg-violet-600 hover:bg-violet-750 disabled:bg-violet-850 disabled:opacity-50 text-white font-medium py-1 px-3 rounded text-[10px] transition-colors duration-150 cursor-pointer self-start sm:self-center select-none"
+                                              >
+                                                {approvingRunId === run.id ? 'Approving...' : 'Approve & Resume'}
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
 
                                         {stepRun.error && (
                                           <div className="bg-rose-950/20 border border-rose-900/30 rounded p-2 text-[10px] font-mono text-rose-400 whitespace-pre-wrap">

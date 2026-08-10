@@ -17,12 +17,12 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     if (!isLoading && isError && !handledAuthErrorRef.current) {
       handledAuthErrorRef.current = true
       void nhostClient.auth.signOut()
-      router.push('/login')
+      router.replace('/login')
       return
     }
 
     if (!isLoading && !isAuthenticated) {
-      router.push('/login')
+      router.replace('/login')
     }
   }, [isLoading, isAuthenticated, isError, router, isConfigured])
 
@@ -32,8 +32,11 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   }
 
   if (isLoading) {
-    // Silent dark background to prevent flashing loaders during session checks
-    return <div className="min-h-screen bg-[#0e0f14]" />
+    return (
+      <div className="min-h-screen bg-[#0e0f14] flex items-center justify-center text-xs text-zinc-500">
+        Checking session…
+      </div>
+    )
   }
 
   if (!isAuthenticated) {
@@ -59,7 +62,7 @@ export function GuestGuard({ children }: { children: ReactNode }) {
     }
 
     if (!isLoading && isAuthenticated) {
-      router.push('/')
+      router.replace('/dashboard')
     }
   }, [isLoading, isAuthenticated, isError, router, isConfigured])
 
@@ -69,8 +72,7 @@ export function GuestGuard({ children }: { children: ReactNode }) {
   }
 
   if (isLoading) {
-    // Silent dark background to prevent flashing loaders during session checks
-    return <div className="min-h-screen bg-[#0e0f14]" />
+    return <>{children}</>
   }
 
   if (isAuthenticated) {

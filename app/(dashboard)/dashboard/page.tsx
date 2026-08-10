@@ -21,7 +21,7 @@ const GetDashboardStatsQuery = gql`
   }
 `
 
-export default function Dashboard() {
+export default function DashboardPage() {
   const [result] = useQuery({ query: GetDashboardStatsQuery })
   const { data, fetching, error } = result
 

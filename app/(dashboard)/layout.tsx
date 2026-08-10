@@ -22,7 +22,7 @@ export default function DashboardLayout({
   }
 
   const navItems = [
-    { name: 'Overview', href: '/' },
+    { name: 'Overview', href: '/dashboard' },
     { name: 'Workflows', href: '/workflows' },
     { name: 'Build Workflow', href: '/workflows/new' },
   ]
@@ -36,7 +36,7 @@ export default function DashboardLayout({
             
             {/* Logo */}
             <div className="flex items-center space-x-6">
-              <Link href="/" className="flex items-center space-x-2.5 group">
+              <Link href="/dashboard" className="flex items-center space-x-2.5 group">
                 <div className="w-7 h-7 rounded-md bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-100 font-bold text-xs">
                   ⚙️
                 </div>
