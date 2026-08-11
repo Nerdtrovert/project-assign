@@ -18,6 +18,14 @@ import {
 import { TriggerWorkflowRunMutation } from '@/graphql/mutations/workflow-run'
 import { DeleteWorkflowMutation, UpdateWorkflowMutation } from '@/graphql/mutations/workflows'
 import nhostClient from '@/lib/nhost/client'
+
+import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
+import { Input } from '@/components/ui/Input'
+import { Textarea } from '@/components/ui/Textarea'
+import { Select } from '@/components/ui/Select'
+
 type StepType = 'llm_call' | 'http_request' | 'db_write' | 'notify' | 'conditional_branch' | 'approval_gate'
 
 const DEFAULT_STEP_CONFIG: Record<StepType, any> = {
@@ -451,19 +459,26 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
 
       {/* Loading state */}
       {isInitialLoading && (
-        <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-zinc-600 mb-3"></div>
+        <div className="bg-[#131316] border border-zinc-800 rounded-lg p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
+          <div className="flex items-center justify-center mb-4">
+            <div className="h-6 w-6 animate-spin border-t border-r border-zinc-400 border-l-transparent border-b-transparent rounded-full mx-auto" />
+          </div>
           <p className="text-zinc-400 text-xs">Loading workflow configuration...</p>
         </div>
       )}
 
       {/* Error state */}
       {!isInitialLoading && error && (
-        <div className="bg-rose-950/20 border border-rose-800/30 text-rose-300 rounded-lg p-5 text-xs">
-          <h4 className="font-semibold">Query Failed</h4>
-          <p className="mt-1 text-zinc-400 font-mono">{error.message}</p>
+        <div className="bg-rose-950/10 border border-rose-900/20 text-rose-300 rounded-lg p-5 text-xs flex flex-col items-center">
+          <div className="flex items-center justify-center mb-3">
+            <div className="w-8 h-8 bg-rose-500/20 rounded-full flex items-center justify-center">
+              <span className="text-rose-400 font-bold">⚠️</span>
+            </div>
+          </div>
+          <h4 className="font-semibold text-center mb-2">Query Failed</h4>
+          <p className="mt-1 text-zinc-400 font-mono text-center">{error.message}</p>
           <div className="mt-4">
-            <Link href="/workflows" className="text-xs text-violet-400 hover:underline">
+            <Link href="/workflows" className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors">
               ← Return to list
             </Link>
           </div>
@@ -476,20 +491,22 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
           
           {/* Main Info Box */}
           <div className="lg:col-span-2 space-y-6 min-w-0">
-            <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-6 space-y-4">
+            <div className="bg-[#131316] border border-zinc-800 rounded-lg p-6 space-y-4 shadow-sm">
               {isEditing ? (
                 /* Edit Form */
                 <form onSubmit={handleUpdate} className="space-y-4">
-                  <h2 className="text-sm font-semibold text-zinc-100 mb-4">Edit Workflow Settings</h2>
+                  <h2 className="text-sm font-semibold text-zinc-100 mb-4 flex items-center gap-2">
+                    Edit Workflow Settings
+                  </h2>
                   
                   {saveError && (
-                    <div className="p-3 bg-rose-950/20 border border-rose-800/30 text-rose-300 rounded-lg text-xs">
+                    <div className="p-3 bg-rose-950/10 border border-rose-900/20 text-rose-300 rounded-lg text-xs">
                       {saveError}
                     </div>
                   )}
 
                   <div className="space-y-1.5">
-                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
                       Workflow Name
                     </label>
                     <input
@@ -498,7 +515,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                       onChange={(e) => setEditName(e.target.value)}
                       required
                       disabled={isSaving}
-                      className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
+                      className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 text-zinc-100 text-xs transition-colors placeholder:text-zinc-700"
                     />
                   </div>
 
@@ -511,7 +528,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                       onChange={(e) => setEditDesc(e.target.value)}
                       rows={4}
                       disabled={isSaving}
-                      className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors resize-none"
+                      className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 text-zinc-100 text-xs transition-colors resize-none placeholder:text-zinc-700"
                       placeholder="Give a description to this automation..."
                     />
                   </div>
@@ -520,7 +537,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                     <button
                       type="submit"
                       disabled={isSaving}
-                      className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-1.5 px-3 rounded-md text-xs transition-colors cursor-pointer"
+                      className="bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-semibold py-1.5 px-3 rounded-md text-xs transition-colors cursor-pointer shadow-sm"
                     >
                       {isSaving ? 'Saving...' : 'Save'}
                     </button>
@@ -533,7 +550,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                         setEditDesc(workflow.description || '')
                         setSaveError(null)
                       }}
-                      className="text-zinc-400 hover:text-zinc-200 text-xs py-1.5 px-2 cursor-pointer"
+                      className="text-zinc-500 hover:text-zinc-200 focus:text-zinc-200 focus:outline-none text-xs py-1.5 px-2 cursor-pointer transition-colors"
                     >
                       Cancel
                     </button>
@@ -543,27 +560,34 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                 /* Detail Display */
                 <div className="space-y-4">
                   <div className="flex justify-between items-start gap-4">
-                    <div>
-                      <h1 className="text-lg font-semibold text-zinc-100 tracking-tight">{workflow.name}</h1>
-                      <p className="text-[10px] text-zinc-500 font-mono mt-1 select-all">UUID: {workflow.id}</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                      <h1 className="text-base font-semibold text-zinc-100 tracking-tight">{workflow.name}</h1>
+                      <span className="text-[9px] text-zinc-500 font-mono select-all">ID: {workflow.id}</span>
                     </div>
                     {canEdit && (
                       <button
                         onClick={() => setIsEditing(true)}
-                        className="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 border border-zinc-800 font-medium py-1 px-3 rounded-md text-xs transition-colors cursor-pointer"
+                        className="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 border border-zinc-800 font-medium py-1 px-3 rounded-md text-[11px] transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
                       >
-                        Edit Settings
+                        <svg className="w-3 h-3 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Settings
                       </button>
                     )}
                   </div>
 
-                  <p className="text-zinc-300 text-xs leading-relaxed whitespace-pre-wrap">
+                  <p className="text-zinc-300 text-xs leading-relaxed whitespace-pre-wrap bg-[#0e0e11]/80 border border-zinc-900 px-3.5 py-2.5 rounded-md">
                     {workflow.description || 'No description provided.'}
                   </p>
 
-                  <div className="flex items-center space-x-2 pt-3 border-t border-zinc-850">
+                  <div className="flex items-center space-x-2 pt-3 border-t border-zinc-900">
                     <span className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Tenant:</span>
-                    <span className="text-[10px] text-zinc-300 font-medium bg-zinc-800/40 border border-zinc-850 px-2 py-0.5 rounded">
+                    <span className="text-[10px] text-zinc-300 font-semibold bg-zinc-900 border border-zinc-800 px-2.5 py-0.5 rounded-md flex items-center gap-1.5">
+                      <svg className="w-3 h-3 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
                       {orgName}
                     </span>
                   </div>
@@ -572,27 +596,34 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
             </div>
 
             {/* Workflow Steps Builder */}
-            <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-6 space-y-5">
+            <div className="bg-[#131316] border border-zinc-800 rounded-lg p-6 space-y-5 shadow-sm">
               <div className="flex justify-between items-center">
                 <h2 className="text-sm font-semibold text-zinc-100 flex items-center space-x-2">
-                  <span>Workflow Builder</span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-full">
+                  <span>Workflow Steps</span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 bg-zinc-900 border border-zinc-800 text-zinc-500 rounded-full">
                     {orderedSteps.length}
                   </span>
                 </h2>
                 {canEdit && (
                   <button
                     onClick={handleAddStepClick}
-                    className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-1 px-3 rounded-md text-xs transition-colors cursor-pointer"
+                    className="bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-semibold py-1.5 px-3 rounded-md text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
                   >
-                    Add Step
+                    <span className="text-sm font-bold">+</span> Add Step
                   </button>
                 )}
               </div>
 
               {orderedSteps.length === 0 ? (
-                <div className="border border-dashed border-zinc-800 rounded-md p-8 text-center text-zinc-500 text-xs">
-                  No steps defined. Add a step to begin configuring the agent pipeline.
+                <div className="border border-dashed border-zinc-800 rounded-md p-8 text-center text-zinc-500 text-xs flex flex-col items-center justify-center bg-zinc-950/5">
+                  <div className="flex items-center justify-center mb-3">
+                    <svg className="w-8 h-8 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-zinc-400 font-medium mb-1">No steps defined</p>
+                  <p className="text-zinc-500 text-xs">Add a step to begin configuring the agent pipeline.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -601,127 +632,148 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                     const stepNum = String(idx + 1).padStart(2, '0')
                     
                     return (
-                      <div key={step.id} className="bg-[#111115] border border-zinc-800 rounded-lg p-5 space-y-4 transition-all duration-150">
-                        <div className="flex items-start justify-between gap-4">
-                          {/* Left icon and details */}
-                          <div className="flex items-start space-x-3.5 min-w-0">
-                            {/* Step index badge */}
-                            <div className="flex items-center justify-center w-8 h-8 rounded bg-zinc-900 border border-zinc-800 text-xs font-mono font-bold text-zinc-400 shrink-0">
-                              {stepNum}
+                      <div key={step.id} className="relative">
+                        {idx > 0 && (
+                          <div className="flex justify-center -my-2 mb-2">
+                            <div className="h-6 w-6 rounded-full border border-zinc-800 bg-[#0e0e11] flex items-center justify-center shadow-md">
+                              <svg className="w-3.5 h-3.5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                              </svg>
                             </div>
-                            
-                            {/* Step metadata */}
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h4 className="text-xs font-semibold text-zinc-100 truncate">{step.name}</h4>
-                                <span className={`text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border font-semibold ${
-                                  step.type === 'llm_call' ? 'bg-violet-950/20 border-violet-850/50 text-violet-400' :
-                                  step.type === 'http_request' ? 'bg-blue-950/20 border-blue-850/50 text-blue-400' :
-                                  step.type === 'conditional_branch' ? 'bg-amber-950/20 border-amber-850/50 text-amber-400' :
-                                  'bg-zinc-900 border-zinc-800 text-zinc-400'
-                                }`}>
-                                  {info.label}
-                                </span>
+                          </div>
+                        )}
+                        <div className="bg-[#111115] border border-zinc-800 rounded-lg p-5 space-y-4 transition-all duration-150 hover:border-zinc-800 shadow-sm">
+                          <div className="flex items-start justify-between gap-4">
+                            {/* Left icon and details */}
+                            <div className="flex items-start space-x-3.5 min-w-0">
+                              {/* Step index badge */}
+                              <div className="flex items-center justify-center w-8 h-8 rounded bg-zinc-900 border border-zinc-800 text-xs font-mono font-bold text-zinc-500 shrink-0">
+                                {stepNum}
                               </div>
                               
-                              {/* Step configuration description */}
-                              <div className="mt-2 text-xs text-zinc-400 space-y-1">
-                                {step.type === 'llm_call' && (
-                                  <>
-                                    <div>
-                                      <span className="text-zinc-500 font-medium">Model:</span>{' '}
-                                      <span className="font-mono text-[10px] text-zinc-350 bg-zinc-900 px-1 py-0.2 rounded border border-zinc-850">{step.config?.model || 'llama-3.1-8b-instant'}</span>
-                                    </div>
-                                    <div className="line-clamp-2 text-zinc-405 leading-normal mt-1">
-                                      <span className="text-zinc-500 font-medium">Prompt:</span> {step.config?.prompt}
-                                    </div>
-                                  </>
-                                )}
-                                {step.type === 'http_request' && (
-                                  <>
-                                    <div className="flex items-center space-x-1.5">
-                                      <span className="text-zinc-500 font-medium">Request:</span>
-                                      <span className="font-bold text-[9px] text-emerald-400 uppercase bg-emerald-950/20 border border-emerald-900/30 px-1 rounded">{step.config?.method || 'GET'}</span>
-                                      <span className="font-mono text-[10px] text-zinc-350 truncate max-w-sm block" title={step.config?.url}>{step.config?.url}</span>
-                                    </div>
-                                  </>
-                                )}
-                                {step.type === 'conditional_branch' && (
-                                  <>
-                                    <div>
-                                      <span className="text-zinc-500 font-medium">Condition:</span>{' '}
-                                      <span className="font-mono text-zinc-300 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-850 text-[10px]">{step.config?.condition}</span>
-                                    </div>
-                                    <div className="text-[10px] text-zinc-550 mt-1 font-medium italic">
-                                      {step.config?.skipOnFalse ? 'FALSE → skip downstream steps' : 'TRUE → skip downstream steps'}
-                                    </div>
-                                  </>
-                                )}
-                                {['db_write', 'notify', 'approval_gate'].includes(step.type) && (
-                                  <div className="text-zinc-550 italic text-[10px]">Configuration saved (Integration Stub)</div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Right Controls */}
-                          <div className="flex items-center space-x-2 shrink-0">
-                            {canEdit && (
-                              <>
-                                {/* Move up/down buttons */}
-                                <div className="flex items-center space-x-1 bg-zinc-900/60 p-0.5 rounded border border-zinc-800">
-                                  <button
-                                    onClick={() => handleMoveStepUp(step, orderedSteps)}
-                                    disabled={idx === 0}
-                                    aria-label="Move Step Up"
-                                    title="Move Step Up"
-                                    className="px-1.5 py-0.5 rounded text-[9px] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 transition-opacity cursor-pointer font-bold"
-                                  >
-                                    [ ↑ ]
-                                  </button>
-                                  <button
-                                    onClick={() => handleMoveStepDown(step, orderedSteps)}
-                                    disabled={idx === orderedSteps.length - 1}
-                                    aria-label="Move Step Down"
-                                    title="Move Step Down"
-                                    className="px-1.5 py-0.5 rounded text-[9px] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 transition-opacity cursor-pointer font-bold"
-                                  >
-                                    [ ↓ ]
-                                  </button>
+                              {/* Step metadata */}
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="text-xs font-semibold text-zinc-100 truncate">{step.name}</h4>
+                                  <span className={`text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border font-semibold ${
+                                    step.type === 'llm_call' ? 'bg-blue-950/20 border-blue-900/30 text-blue-400' :
+                                    step.type === 'http_request' ? 'bg-emerald-950/20 border-emerald-900/30 text-emerald-400' :
+                                    step.type === 'conditional_branch' ? 'bg-amber-950/10 border-amber-900/20 text-amber-400' :
+                                    step.type === 'approval_gate' ? 'bg-rose-950/10 border-rose-900/20 text-rose-400' :
+                                    step.type === 'db_write' ? 'bg-teal-950/20 border-teal-900/30 text-teal-400' :
+                                    'bg-zinc-900 border-zinc-800 text-zinc-400'
+                                  }`}>
+                                    {info.label}
+                                  </span>
                                 </div>
                                 
-                                <button
-                                  onClick={() => handleEditStepClick(step)}
-                                  aria-label="Edit Config"
-                                  className="text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer font-medium py-1 px-2 rounded border border-zinc-800 hover:bg-zinc-800 bg-zinc-900/40"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteStep(step.id)}
-                                  aria-label="Delete Step"
-                                  className="text-xs text-rose-500 hover:text-rose-400 cursor-pointer font-medium py-1 px-2 rounded border border-rose-950/20 hover:bg-rose-950/25 bg-rose-950/10"
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Collapsible raw JSON configuration display */}
-                        {step.config && Object.keys(step.config).length > 0 && (
-                          <details className="group border-t border-zinc-850/60 pt-3">
-                            <summary className="text-[9px] text-zinc-500 font-semibold cursor-pointer select-none hover:text-zinc-300 transition-colors uppercase tracking-wider outline-none">
-                              Raw JSON Configuration
-                            </summary>
-                            <div className="mt-2 bg-zinc-950/60 border border-zinc-900 rounded-md p-3 overflow-x-auto max-h-48">
-                              <pre className="text-[10px] font-mono text-zinc-400 select-all leading-relaxed">
-                                {JSON.stringify(step.config, null, 2)}
-                              </pre>
+                                {/* Step configuration description */}
+                                <div className="mt-2 text-xs text-zinc-400 space-y-1">
+                                  {step.type === 'llm_call' && (
+                                    <>
+                                      <div className="flex items-center space-x-2">
+                                        <span className="text-zinc-500 font-medium w-[60px]">Model:</span>
+                                        <span className="font-mono text-[10px] text-zinc-300 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 block max-w-xs truncate">{step.config?.model || 'llama-3.1-8b-instant'}</span>
+                                      </div>
+                                      <div className="mt-1.5">
+                                        <span className="text-zinc-500 font-medium w-[60px] block mb-1">Prompt:</span>
+                                        <p className="text-zinc-400 line-clamp-2 bg-black/20 border border-zinc-900/40 px-2 py-1.5 rounded max-w-md">{step.config?.prompt || ''}</p>
+                                      </div>
+                                    </>
+                                  )}
+                                  {step.type === 'http_request' && (
+                                    <>
+                                      <div className="flex items-center space-x-2">
+                                        <span className="text-zinc-500 font-medium w-[60px]">Request:</span>
+                                        <span className="font-bold text-[9px] text-emerald-400 uppercase bg-emerald-950/20 border border-emerald-900/30 px-2 py-0.5 rounded">{step.config?.method || 'GET'}</span>
+                                      </div>
+                                      <div className="mt-1.5">
+                                        <span className="text-zinc-500 font-medium w-[60px] block mb-1">URL:</span>
+                                        <span className="font-mono text-[10px] text-zinc-300 block max-w-md truncate" title={step.config?.url}>{step.config?.url}</span>
+                                      </div>
+                                    </>
+                                  )}
+                                  {step.type === 'conditional_branch' && (
+                                    <>
+                                      <div className="flex items-center space-x-2">
+                                        <span className="text-zinc-500 font-medium w-[60px]">Condition:</span>
+                                        <span className="font-mono text-zinc-300 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 block max-w-md truncate">{step.config?.condition}</span>
+                                      </div>
+                                      <div className="mt-1.5">
+                                        <span className="text-zinc-500 font-medium w-[60px] block mb-1">Behavior:</span>
+                                        <span className="text-zinc-500 italic text-[10px]">{step.config?.skipOnFalse ? 'FALSE → skip downstream steps' : 'TRUE → skip downstream steps'}</span>
+                                      </div>
+                                    </>
+                                  )}
+                                  {['db_write', 'notify', 'approval_gate'].includes(step.type) && (
+                                    <div className="mt-1">
+                                      <span className="text-zinc-500 font-medium w-[60px] block mb-1">Type:</span>
+                                      <span className="text-zinc-500 italic text-[10px]">Configuration saved (Integration Stub)</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </details>
-                        )}
+
+                            {/* Right Controls */}
+                            <div className="flex items-center space-x-2 shrink-0">
+                              {canEdit && (
+                                <>
+                                  {/* Move up/down buttons */}
+                                  <div className="flex items-center space-x-1 bg-zinc-900/60 p-0.5 rounded border border-zinc-800">
+                                    <button
+                                      onClick={() => handleMoveStepUp(step, orderedSteps)}
+                                      disabled={idx === 0}
+                                      aria-label="Move Step Up"
+                                      title="Move Step Up"
+                                      className="px-1.5 py-0.5 rounded text-[9px] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 transition-all cursor-pointer font-semibold"
+                                    >
+                                      ↑
+                                    </button>
+                                    <button
+                                      onClick={() => handleMoveStepDown(step, orderedSteps)}
+                                      disabled={idx === orderedSteps.length - 1}
+                                      aria-label="Move Step Down"
+                                      title="Move Step Down"
+                                      className="px-1.5 py-0.5 rounded text-[9px] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 transition-all cursor-pointer font-semibold"
+                                    >
+                                      ↓
+                                    </button>
+                                  </div>
+                                  
+                                  <button
+                                    onClick={() => handleEditStepClick(step)}
+                                    aria-label="Edit Config"
+                                    className="text-xs text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-800 transition-colors py-1 px-2.5 rounded cursor-pointer bg-zinc-900/50"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteStep(step.id)}
+                                    aria-label="Delete Step"
+                                    className="text-xs text-rose-400 hover:text-rose-200 border border-rose-950/20 hover:border-rose-900 transition-all py-1 px-2.5 rounded cursor-pointer bg-rose-950/5"
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Collapsible raw JSON configuration display */}
+                          {step.config && Object.keys(step.config).length > 0 && (
+                            <details className="group border-t border-zinc-800/60 pt-3">
+                              <summary className="text-[9px] text-zinc-500 font-semibold cursor-pointer select-none hover:text-zinc-300 transition-colors uppercase tracking-wider outline-none">
+                                Raw JSON Configuration
+                              </summary>
+                              <div className="mt-2 bg-zinc-950/60 border border-zinc-900 rounded-md p-3 overflow-x-auto max-h-48">
+                                <pre className="text-[10px] font-mono text-zinc-400 select-all leading-relaxed">
+                                  {JSON.stringify(step.config, null, 2)}
+                                </pre>
+                              </div>
+                            </details>
+                          )}
+                        </div>
                       </div>
                     )
                   })}
@@ -730,17 +782,23 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
             </div>
 
             {/* Recent Executions Section */}
-            <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-6 space-y-5">
+            <div className="bg-[#131316] border border-zinc-800 rounded-lg p-6 space-y-5 shadow-sm">
               <h2 className="text-sm font-semibold text-zinc-100 flex items-center space-x-2">
                 <span>Execution History</span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-full">
+                <span className="text-[10px] font-semibold px-2 py-0.5 bg-zinc-900 border border-zinc-800 text-zinc-500 rounded-full">
                   {workflowRuns.length}
                 </span>
               </h2>
 
               {workflowRuns.length === 0 ? (
-                <div className="border border-dashed border-zinc-800 rounded-md p-6 text-center text-zinc-500 text-xs">
-                  No execution runs recorded. Use the "Run Workflow" option to test.
+                <div className="border border-dashed border-zinc-800 bg-zinc-950/5 rounded-md p-6 text-center text-zinc-500 text-xs flex flex-col items-center justify-center">
+                  <div className="flex items-center justify-center mb-3 text-zinc-500">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <p className="text-zinc-400 font-medium mb-1">No execution runs recorded</p>
+                  <p className="text-zinc-500 text-xs">Use the "Run Workflow" option to test.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -748,20 +806,20 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                     const isExpanded = expandedRunId === run.id
                     const startedTime = run.started_at ? new Date(run.started_at).toLocaleString() : 'N/A'
                     const duration = run.started_at && run.completed_at
-                      ? `${((new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000).toFixed(2)}s`
+                      ? (new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000
                       : null
 
                     return (
-                      <div key={run.id} className="border border-zinc-800 rounded-md overflow-hidden bg-zinc-950/20">
+                      <div key={run.id} className="border border-zinc-800 rounded-md overflow-hidden bg-zinc-950/5">
                         {/* Run Header */}
                         <div 
                           onClick={() => setExpandedRunId(isExpanded ? null : run.id)}
-                          className="flex flex-wrap items-center justify-between gap-4 p-3 cursor-pointer select-none hover:bg-zinc-900/40 text-xs"
+                          className="flex flex-wrap items-center justify-between gap-4 p-3 cursor-pointer select-none hover:bg-zinc-900/40 text-xs transition-colors"
                         >
                           <div className="flex items-center space-x-2.5">
                             <span className={`h-1.5 w-1.5 rounded-full ${
                               run.status === 'completed' ? 'bg-emerald-500' :
-                              run.status === 'running' ? 'bg-amber-500 animate-pulse' :
+                              run.status === 'running' ? 'bg-blue-500 animate-pulse' :
                               run.status === 'paused' ? 'bg-amber-500' :
                               'bg-rose-500'
                             }`} />
@@ -771,15 +829,32 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                             </div>
                           </div>
                           <div className="flex items-center space-x-3">
-                            <span className="text-[10px] font-mono text-zinc-400">{duration ? `${duration}` : ''}</span>
-                            <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
-                              run.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
-                              run.status === 'running' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 animate-pulse' :
-                              run.status === 'paused' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
-                              'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                            }`}>
-                              {run.status === 'paused' ? 'WAITING APPROVAL' : run.status}
-                            </span>
+                            {duration !== null ? (
+                              <>
+                                <span className="flex items-center space-x-2">
+                                  <span className="text-[10px] font-mono text-zinc-400">{duration.toFixed(2)}s</span>
+                                  <span className="w-0.5 bg-zinc-800/50"></span>
+                                  <span className="text-xs text-zinc-505">{duration > 60 ? `${(duration/60).toFixed(1)}m` : `${duration.toFixed(2)}s`}</span>
+                                </span>
+                                <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
+                                  run.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                                  run.status === 'running' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400 animate-pulse' :
+                                  run.status === 'paused' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                                  'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                                }`}>
+                                  {run.status === 'paused' ? 'WAITING APPROVAL' : run.status}
+                                </span>
+                              </>
+                            ) : (
+                              <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
+                                run.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                                run.status === 'running' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400 animate-pulse' :
+                                run.status === 'paused' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                                'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                              }`}>
+                                {run.status === 'paused' ? 'WAITING APPROVAL' : run.status}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -802,7 +877,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                       <div className={`w-6 h-6 rounded border flex items-center justify-center text-[9px] font-bold z-10 shrink-0 ${stepInfo.color}`}>
                                         {stepInfo.icon}
                                       </div>
-                                      <div className="flex-1 bg-[#0e0e11] border border-zinc-850 rounded p-2.5 space-y-1.5">
+                                      <div className="flex-1 bg-[#0e0e11] border border-zinc-800 rounded p-2.5 space-y-1.5">
                                         <div className="flex items-center justify-between">
                                           <div>
                                             <span className="font-semibold text-zinc-300">{step.name || 'Step'}</span>
@@ -811,7 +886,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                           <div className="flex items-center space-x-2">
                                             <span className={`text-[8px] font-bold uppercase tracking-wider px-1 py-0.2 rounded border ${
                                               stepRun.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
-                                              stepRun.status === 'skipped' ? 'bg-zinc-850 border-zinc-800 text-zinc-500' :
+                                              stepRun.status === 'skipped' ? 'bg-zinc-800 border-zinc-800 text-zinc-500' :
                                               stepRun.status === 'paused' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
                                               'bg-rose-500/10 border-rose-500/20 text-rose-400'
                                             }`}>
@@ -820,7 +895,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                             {(stepRun.input || stepRun.output || stepRun.error) && (
                                               <button
                                                 onClick={() => setExpandedStepRunId(isStepRunExpanded ? null : stepRun.id)}
-                                                className="text-[9px] text-zinc-400 hover:text-zinc-100 cursor-pointer"
+                                                className="text-[9px] text-zinc-400 hover:text-zinc-150 transition-colors cursor-pointer"
                                               >
                                                 {isStepRunExpanded ? 'Hide Payload' : 'Show Payload'}
                                               </button>
@@ -829,9 +904,9 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                         </div>
 
                                         {stepRun.status === 'paused' && (
-                                          <div className="bg-amber-950/15 border border-amber-900/20 rounded p-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
+                                          <div className="bg-amber-950/10 border border-amber-900/20 rounded p-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
                                             <div className="space-y-0.5">
-                                              <span className="block text-[8px] font-semibold text-amber-550 uppercase tracking-wider">Approval Paused</span>
+                                              <span className="block text-[8px] font-semibold text-amber-500 uppercase tracking-wider">Approval Paused</span>
                                               <span className="text-zinc-300 text-[10px]">
                                                 {stepRun.output?.message || 'Requires owner/editor approval to resume.'}
                                               </span>
@@ -843,7 +918,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                                   await handleApproveRun(run.id)
                                                 }}
                                                 disabled={approvingRunId === run.id}
-                                                className="bg-violet-600 hover:bg-violet-750 disabled:bg-violet-850 disabled:opacity-50 text-white font-medium py-1 px-3 rounded text-[10px] transition-colors duration-150 cursor-pointer self-start sm:self-center select-none"
+                                                className="bg-zinc-100 hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-semibold py-1 px-3 rounded text-[10px] transition-colors duration-155 cursor-pointer self-start sm:self-center select-none shadow-sm"
                                               >
                                                 {approvingRunId === run.id ? 'Approving...' : 'Approve & Resume'}
                                               </button>
@@ -852,17 +927,17 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                         )}
 
                                         {stepRun.error && (
-                                          <div className="bg-rose-950/20 border border-rose-900/30 rounded p-2 text-[10px] font-mono text-rose-400 whitespace-pre-wrap">
+                                          <div className="bg-rose-950/10 border border-rose-900/20 rounded p-2.5 text-[10px] font-mono text-rose-400 whitespace-pre-wrap leading-relaxed">
                                             {stepRun.error}
                                           </div>
                                         )}
 
                                         {isStepRunExpanded && (
-                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2 border-t border-zinc-850">
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2 border-t border-zinc-800">
                                             {stepRun.input && (
                                               <div className="space-y-1">
                                                 <span className="text-[8px] font-semibold text-zinc-500 uppercase tracking-wider">Input</span>
-                                                <pre className="text-[9px] font-mono text-zinc-400 bg-black/40 p-2 rounded overflow-x-auto max-h-32">
+                                                <pre className="text-[9px] font-mono text-zinc-400 bg-black/40 p-2 rounded overflow-x-auto max-h-32 border border-zinc-900">
                                                   {typeof stepRun.input === 'object' ? JSON.stringify(stepRun.input, null, 2) : String(stepRun.input)}
                                                 </pre>
                                               </div>
@@ -870,7 +945,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                                             {stepRun.output && (
                                               <div className="space-y-1">
                                                 <span className="text-[8px] font-semibold text-zinc-500 uppercase tracking-wider">Output</span>
-                                                <pre className="text-[9px] font-mono text-zinc-400 bg-black/40 p-2 rounded overflow-x-auto max-h-32">
+                                                <pre className="text-[9px] font-mono text-zinc-400 bg-black/40 p-2 rounded overflow-x-auto max-h-32 border border-zinc-900">
                                                   {typeof stepRun.output === 'object' ? JSON.stringify(stepRun.output, null, 2) : String(stepRun.output)}
                                                 </pre>
                                               </div>
@@ -892,16 +967,15 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
               )}
             </div>
           </div>
-
           {/* Sidebar / Triggers & Actions */}
           <div className="space-y-6 min-w-0">
             
             {/* User Access Rights */}
-            <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-5 space-y-3">
+            <div className="bg-[#131316] border border-zinc-800 rounded-lg p-5 space-y-3 shadow-sm">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Access Control</span>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-zinc-300">Your Role</span>
-                <span className="font-semibold uppercase tracking-wider text-zinc-300 bg-zinc-800 border border-zinc-700 px-2 py-0.5 rounded text-[10px]">
+              <div className="flex items-center justify-between text-xs border-t border-zinc-900 pt-2.5">
+                <span className="text-zinc-400">Your Role</span>
+                <span className="font-semibold uppercase tracking-wider text-zinc-300 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-[10px]">
                   {userRole}
                 </span>
               </div>
@@ -909,7 +983,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
 
             {/* Manual Run Card */}
             {canEdit && (
-              <div className="bg-[#16161a] border border-zinc-800 rounded-lg p-5 space-y-3">
+              <div className="bg-[#131316] border border-zinc-800 rounded-lg p-5 space-y-4 shadow-sm">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Manual Execution</h3>
                 
                 {/* Customer Message input area for Demo */}
@@ -922,27 +996,21 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                     onChange={(e) => setCustomerMessage(e.target.value)}
                     rows={3}
                     placeholder="Enter support message..."
-                    className="w-full px-2.5 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded text-xs text-zinc-300 focus:outline-none focus:border-zinc-700 resize-none font-medium leading-relaxed"
+                    className="w-full px-2.5 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded text-xs text-zinc-300 focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 resize-none font-medium leading-relaxed"
                   />
                 </div>
 
-                {isRunningWorkflow ? (
-                  <div className="flex items-center space-x-2 py-1.5">
-                    <div className="animate-spin rounded-full h-3.5 w-3.5 border-t-2 border-b-2 border-zinc-500"></div>
-                    <span className="text-zinc-400 text-[10px]">Executing steps...</span>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleRunWorkflow}
-                    disabled={isRunningWorkflow}
-                    className="w-full bg-violet-600 hover:bg-violet-700 text-white font-medium py-1.5 px-3 rounded-md text-xs transition-colors cursor-pointer"
-                  >
-                    {runId ? 'Re-run Workflow' : 'Run Workflow'}
-                  </button>
-                )}
+                <Button
+                  onClick={handleRunWorkflow}
+                  disabled={isRunningWorkflow}
+                  isLoading={isRunningWorkflow}
+                  block
+                >
+                  {runId ? 'Re-run Workflow' : 'Run Workflow'}
+                </Button>
                 
                 {runId && (
-                  <div className="pt-2 border-t border-zinc-850 space-y-1.5">
+                  <div className="pt-2.5 border-t border-zinc-900 space-y-1.5">
                     <div className="flex items-center justify-between text-[10px]">
                       <span className="text-zinc-500 font-medium">Run ID</span>
                       <span className="text-zinc-300 font-mono select-all text-right max-w-[130px] truncate" title={runId}>{runId}</span>
@@ -958,20 +1026,22 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
 
             {/* Dangerous Actions Box */}
             {canDelete && (
-              <div className="bg-rose-950/10 border border-rose-900/20 rounded-lg p-5 space-y-3">
+              <div className="bg-red-950/5 border border-red-900/20 rounded-lg p-5 space-y-3 shadow-sm">
                 <div>
-                  <h4 className="text-xs font-semibold text-rose-400">Danger Zone</h4>
-                  <p className="text-[11px] text-zinc-500 leading-normal">
+                  <h4 className="text-xs font-semibold text-red-400">Danger Zone</h4>
+                  <p className="text-[11px] text-zinc-500 leading-normal mt-1">
                     Permanently delete this workflow pipeline. This action is irreversible.
                   </p>
                 </div>
-                <button
+                <Button
                   onClick={handleDelete}
                   disabled={isDeleting}
-                  className="w-full bg-rose-950/20 hover:bg-rose-900 text-rose-400 hover:text-white border border-rose-800/30 text-xs font-semibold py-1.5 px-3 rounded-md transition-colors cursor-pointer"
+                  isLoading={isDeleting}
+                  variant="danger"
+                  block
                 >
-                  {isDeleting ? 'Deleting...' : 'Delete Workflow'}
-                </button>
+                  Delete Workflow
+                </Button>
               </div>
             )}
           </div>
@@ -981,13 +1051,13 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
       {/* Add / Edit Step Modal */}
       {showStepForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px] animate-fade-in">
-          <div className="w-full max-w-lg bg-[#16161a] border border-zinc-800 rounded-lg p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-lg bg-[#131316] border border-zinc-800 rounded-lg p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-sm font-semibold text-zinc-100">
               {editingStepId ? 'Configure Step Details' : 'Add New Step'}
             </h3>
 
             {stepError && (
-              <div className="p-3 bg-rose-950/20 border border-rose-900/30 text-rose-300 rounded-lg text-xs font-mono">
+              <div className="p-3 bg-rose-950/10 border border-rose-900/20 text-rose-300 rounded-lg text-xs font-mono">
                 {stepError}
               </div>
             )}
@@ -995,7 +1065,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
             <form onSubmit={handleStepFormSubmit} className="space-y-4">
               {/* Step Name */}
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
                   Step Name
                 </label>
                 <input
@@ -1005,13 +1075,13 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                   required
                   disabled={isStepSaving}
                   placeholder="e.g. Run Sentiment Analysis"
-                  className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs"
+                  className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors"
                 />
               </div>
 
               {/* Step Type */}
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
                   Step Type
                 </label>
                 <select
@@ -1022,7 +1092,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                     setStepConfigStr(getDefaultConfig(nextType))
                   }}
                   disabled={isStepSaving}
-                  className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs"
+                  className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs cursor-pointer transition-colors"
                 >
                   <option value="llm_call">LLM Call</option>
                   <option value="http_request">HTTP Request</option>
@@ -1035,7 +1105,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
 
               {/* Visual Config Builder */}
               <div className="p-4 bg-zinc-950/40 border border-zinc-800 rounded-lg space-y-3">
-                <h4 className="text-[10px] font-semibold text-zinc-450 uppercase tracking-wider">
+                <h4 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
                   Visual Parameters Builder
                 </h4>
                 <StepConfigUI
@@ -1055,7 +1125,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
 
               {/* Step Config JSON */}
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
                   Configuration (JSON)
                 </label>
                 <textarea
@@ -1064,28 +1134,28 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                   required
                   disabled={isStepSaving}
                   rows={6}
-                  className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 font-mono text-xs resize-none"
+                  className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 font-mono text-xs resize-none"
                   placeholder={'{\n  "prompt": "Evaluate context..."\n}'}
                 />
               </div>
 
               {/* Modal Actions */}
-              <div className="flex justify-end space-x-2.5 pt-4 border-t border-zinc-800">
+              <div className="flex justify-end items-center space-x-2.5 pt-4 border-t border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setShowStepForm(false)}
                   disabled={isStepSaving}
-                  className="text-zinc-400 hover:text-zinc-200 text-xs font-semibold px-3 py-1.5 cursor-pointer"
+                  className="text-zinc-500 hover:text-zinc-200 text-xs font-semibold px-3 py-1.5 cursor-pointer transition-colors"
                 >
                   Cancel
                 </button>
-                <button
+                <Button
                   type="submit"
                   disabled={isStepSaving}
-                  className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-1.5 px-4 rounded-md text-xs transition-colors cursor-pointer disabled:opacity-50"
+                  isLoading={isStepSaving}
                 >
-                  {isStepSaving ? 'Saving...' : 'Save Configuration'}
-                </button>
+                  Save Configuration
+                </Button>
               </div>
             </form>
           </div>

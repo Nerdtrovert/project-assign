@@ -17,43 +17,40 @@ export function LLMCallConfig({ config, onConfigChange }: { config: any; onConfi
   }
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-          Model
+    <div className="space-y-4 text-left">
+      <div className="space-y-1">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+          Model Identifier
         </label>
         <input
           type="text"
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
+          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors"
           placeholder="e.g., llama-3.1-8b-instant"
           onBlur={handleChange}
           onKeyPress={(e) => e.key === 'Enter' && handleChange()}
         />
+        <p className="text-[10px] text-zinc-500">Provide the provider-specific model code for this LLM execution step.</p>
       </div>
 
-      <div>
-        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-          Prompt
+      <div className="space-y-1">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+          Prompt Template
         </label>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={3}
-          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs resize-none transition-colors"
+          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs resize-none transition-colors"
           placeholder="Enter the prompt for the LLM..."
           onBlur={handleChange}
           onKeyPress={(e) => e.key === 'Enter' && handleChange()}
         />
+        <p className="text-[10px] text-zinc-500">Construct instructions for the LLM. You can reference previous steps outputs.</p>
       </div>
     </div>
   )
-}
-
-type HttpRequestConfigProps = {
-  config: any
-  onConfigChange: (config: any) => void
 }
 
 export function HttpRequestConfig({ config, onConfigChange }: { config: any; onConfigChange: (config: any) => void }) {
@@ -69,16 +66,16 @@ export function HttpRequestConfig({ config, onConfigChange }: { config: any; onC
   const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4 text-left">
       <div className="grid grid-cols-3 gap-2">
-        <div className="col-span-1">
-          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+        <div className="col-span-1 space-y-1">
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
             Method
           </label>
           <select
             value={method}
             onChange={(e) => setMethod(e.target.value)}
-            className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
+            className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors cursor-pointer"
             onBlur={handleChange}
             onKeyPress={(e) => e.key === 'Enter' && handleChange()}
           >
@@ -87,15 +84,15 @@ export function HttpRequestConfig({ config, onConfigChange }: { config: any; onC
             ))}
           </select>
         </div>
-        <div className="col-span-2">
-          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-            URL
+        <div className="col-span-2 space-y-1">
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+            Target URL
           </label>
           <input
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
+            className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors"
             placeholder="https://api.example.com/endpoint"
             onBlur={handleChange}
             onKeyPress={(e) => e.key === 'Enter' && handleChange()}
@@ -103,8 +100,8 @@ export function HttpRequestConfig({ config, onConfigChange }: { config: any; onC
         </div>
       </div>
 
-      <div>
-        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+      <div className="space-y-1">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
           Headers (JSON)
         </label>
         <textarea
@@ -116,27 +113,29 @@ export function HttpRequestConfig({ config, onConfigChange }: { config: any; onC
               // Keep invalid JSON, don't update state
             }
           }}
-          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs font-mono resize-none transition-colors"
+          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs font-mono resize-none transition-colors"
           rows={2}
           placeholder='{"Authorization": "Bearer token"}'
           onBlur={handleChange}
           onKeyPress={(e) => e.key === 'Enter' && handleChange()}
         />
+        <p className="text-[10px] text-zinc-500">Provide authorization or custom query headers in JSON notation.</p>
       </div>
 
-      <div>
-        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-          Body
+      <div className="space-y-1">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+          Request Body
         </label>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs resize-none transition-colors"
+          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs resize-none transition-colors"
           rows={2}
           placeholder="Request body (for POST/PUT/PATCH)..."
           onBlur={handleChange}
           onKeyPress={(e) => e.key === 'Enter' && handleChange()}
         />
+        <p className="text-[10px] text-zinc-500">Specify data payload content for POST, PUT, or PATCH commands.</p>
       </div>
     </div>
   )
@@ -151,25 +150,26 @@ export function DBWriteConfig({ config, onConfigChange }: { config: any; onConfi
   }
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-          Target / Table Identifier
+    <div className="space-y-4 text-left">
+      <div className="space-y-1">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+          Target Database Table
         </label>
         <input
           type="text"
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
+          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors"
           placeholder="public.users, crm.customers, etc."
           onBlur={handleChange}
           onKeyPress={(e) => e.key === 'Enter' && handleChange()}
         />
+        <p className="text-[10px] text-zinc-500">Identify the destination table using schema prefix.</p>
       </div>
 
-      <div>
-        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-          Data (JSON)
+      <div className="space-y-1">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+          Row Data Payload (JSON)
         </label>
         <textarea
           value={JSON.stringify(data, null, 2)}
@@ -180,12 +180,13 @@ export function DBWriteConfig({ config, onConfigChange }: { config: any; onConfi
               // Keep invalid JSON, don't update state
             }
           }}
-          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs font-mono resize-none transition-colors"
+          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs font-mono resize-none transition-colors"
           rows={3}
           placeholder='{"name": "John", "email": "john@example.com"}'
           onBlur={handleChange}
           onKeyPress={(e) => e.key === 'Enter' && handleChange()}
         />
+        <p className="text-[10px] text-zinc-500">Provide the row property bindings to write to the database.</p>
       </div>
     </div>
   )
@@ -202,16 +203,16 @@ export function NotifyConfig({ config, onConfigChange }: { config: any; onConfig
   const channels = ['email', 'slack', 'webhook', 'sms']
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4 text-left">
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+        <div className="space-y-1">
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
             Channel
           </label>
           <select
             value={channel}
             onChange={(e) => setChannel(e.target.value)}
-            className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
+            className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors cursor-pointer"
             onBlur={handleChange}
             onKeyPress={(e) => e.key === 'Enter' && handleChange()}
           >
@@ -220,21 +221,22 @@ export function NotifyConfig({ config, onConfigChange }: { config: any; onConfig
             ))}
           </select>
         </div>
-        <div>
-          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-            Message
+        <div className="space-y-1">
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+            Message Summary
           </label>
           <input
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
+            className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors"
             placeholder="Notification message..."
             onBlur={handleChange}
             onKeyPress={(e) => e.key === 'Enter' && handleChange()}
           />
         </div>
       </div>
+      <p className="text-[10px] text-zinc-500">Define the alerts route pipeline channels and dynamic summary values.</p>
     </div>
   )
 }
@@ -281,50 +283,51 @@ export function ConditionalBranchConfig({
   }, [config])
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+    <div className="space-y-4 text-left">
+      <div className="space-y-1">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
           Condition Expression
         </label>
         <input
           type="text"
           value={condition}
           onChange={(e) => handleChange(e.target.value, skipOnTrue, skipOnFalse)}
-          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
+          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors"
           placeholder="e.g., previous.output.classification == urgent"
         />
+        <p className="text-[10px] text-zinc-500">Provide an evaluation expression to classification inputs.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+        <div className="space-y-1">
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
             If True
           </label>
           <select
             value={skipOnTrue ? 'skip' : ''}
             onChange={(e) => handleChange(condition, e.target.value === 'skip', skipOnFalse)}
-            className="w-full px-2 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors cursor-pointer"
+            className="w-full px-2 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors cursor-pointer"
           >
             <option value="">Continue to next step</option>
             <option value="skip">Skip next step</option>
           </select>
         </div>
 
-        <div>
-          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+        <div className="space-y-1">
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
             If False
           </label>
           <select
             value={skipOnFalse ? 'skip' : ''}
             onChange={(e) => handleChange(condition, skipOnTrue, e.target.value === 'skip')}
-            className="w-full px-2 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors cursor-pointer"
+            className="w-full px-2 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors cursor-pointer"
           >
             <option value="">Continue to next step</option>
             <option value="skip">Skip next step</option>
           </select>
         </div>
       </div>
-      <div className="text-[10px] text-zinc-550 leading-normal bg-zinc-950/20 p-2 rounded border border-zinc-900">
+      <div className="text-[10px] text-zinc-500 leading-normal bg-zinc-950/40 p-2.5 rounded border border-zinc-900">
         💡 <strong>Runner Flow Info:</strong> The execution runner is sequential. Selecting <em>"Skip next step"</em> causes the immediate downstream action (e.g. HTTP Webhook) to be skipped when this branch path evaluates.
       </div>
     </div>
@@ -340,24 +343,25 @@ export function ApprovalGateConfig({ config, onConfigChange }: { config: any; on
   }
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
-          Approval Message
+    <div className="space-y-4 text-left">
+      <div className="space-y-1">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+          Approval Request Message
         </label>
         <input
           type="text"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
+          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors"
           placeholder="Message to show to approvers..."
           onBlur={handleChange}
           onKeyPress={(e) => e.key === 'Enter' && handleChange()}
         />
+        <p className="text-[10px] text-zinc-500">Provide verification context instructions for reviewer action.</p>
       </div>
 
-      <div>
-        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+      <div className="space-y-1">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
           Approvers (emails, comma-separated)
         </label>
         <input
@@ -370,11 +374,12 @@ export function ApprovalGateConfig({ config, onConfigChange }: { config: any; on
               .filter(email => email.length > 0)
             setApprovers(emails)
           }}
-          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 text-zinc-100 text-xs transition-colors"
+          className="w-full px-3 py-1.5 bg-[#0e0e11] border border-zinc-800 rounded-md focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 text-zinc-100 text-xs transition-colors"
           placeholder="approver1@example.com, approver2@example.com"
           onBlur={handleChange}
           onKeyPress={(e) => e.key === 'Enter' && handleChange()}
         />
+        <p className="text-[10px] text-zinc-500">Target approval emails required to resume this workflow execution.</p>
       </div>
     </div>
   )
